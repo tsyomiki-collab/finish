@@ -1,0 +1,262 @@
+<div id="rg-gallery">
+  <button class="rg-btn rg-prev" type="button" aria-label="Previous">⟨</button>
+
+  <div class="rg-wrapper">
+    <div class="rg-sideSlot">
+      <img id="rg-left" class="rg-side" alt="">
+    </div>
+
+    <div id="rg-center" class="rg-centerSlot"></div>
+
+    <div class="rg-sideSlot">
+      <img id="rg-right" class="rg-side" alt="">
+    </div>
+  </div>
+
+  <button class="rg-btn rg-next" type="button" aria-label="Next">⟩</button>
+</div>
+
+<style>
+#rg-gallery{
+  position:fixed;
+  inset:0;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  background:#fcfcfc;
+  z-index:9999;
+}
+
+.rg-wrapper{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  max-width:min(2000px, 96vw);
+  padding:0 110px;
+  box-sizing:border-box;
+}
+
+.rg-sideSlot{
+  width:360px;
+  height:330px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  overflow:hidden;
+  margin:0 -290px;   /* сближаем боковые к центру */
+}
+
+.rg-centerSlot{
+  width:min(1180px, 70vw);
+  height:735px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  overflow:hidden;
+}
+
+.rg-main{
+  width:100%;
+  height:100%;
+  object-fit:contain;
+  display:block;
+}
+
+.rg-side{
+  width:100%;
+  height:100%;
+  object-fit:contain;
+  opacity:.8;
+  display:block;
+}
+
+.rg-btn{
+  position:fixed;
+  top:50%;
+  transform:translateY(-50%);
+
+  width:120px;
+  height: 120px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  box-sizing:border-box;
+
+  font-size:3rem;
+  line-height:1;
+  padding:0;
+  border:0;
+  background:transparent;
+  color:#666;
+  cursor:pointer;
+  user-select:none;
+
+  appearance:none;
+  -webkit-appearance:none;
+  -webkit-tap-highlight-color:transparent;
+}
+
+.rg-btn:focus{ outline:none; }
+.rg-btn:focus-visible{
+  outline:2px solid rgba(0,0,0,.25);
+  outline-offset:3px;
+}
+
+.rg-btn:active{
+  transform:translateY(-50%);
+}
+
+.rg-prev{ left:80px; }
+.rg-next{ right:80px; }
+
+@media (max-width:820px){
+  .rg-sideSlot{ display:none; }
+  .rg-centerSlot{ width:92vw; }
+}
+
+/* чуть меньше лагов */
+.rg-centerSlot, .rg-sideSlot { contain: layout paint size; }
+.rg-main { will-change: contents; }
+
+/* ✅ если текущая фотка горизонтальная — боковых НЕТ (и они не занимают место) */
+#rg-gallery.rg-wide .rg-sideSlot{
+  display:none;
+}
+</style>
+
+<script>
+(function(){
+  const gallery = document.getElementById("rg-gallery");
+  if(!gallery) return;
+  if(gallery.dataset.rgInit === "1") return;
+  gallery.dataset.rgInit = "1";
+
+  // ✅ МАТЕРИАЛЫ ИЗ ВТОРОГО КОДА
+  const elements=[
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/jovan-s/main/1.png"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/jovan-s/main/2.png"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/jovan-s/main/3.png"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/jovan-s/main/4.png"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/jovan-s/main/5.png"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/jovan-s/main/6.png"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/jovan-s/main/7.png"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/jovan-s/main/8.png"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/jovan-s/main/9.png"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/jovan-s/main/10.jpg"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/jovan-s/main/11.png"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/jovan-s/main/12.png"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/jovan-s/main/13.png"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/jovan-s/main/14.png"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/jovan-s/main/15.png"}
+  ];
+
+  let index = 0;
+  let token = 0;
+
+  const left   = document.getElementById("rg-left");
+  const right  = document.getElementById("rg-right");
+  const center = document.getElementById("rg-center");
+  const prevBtn = gallery.querySelector(".rg-prev");
+  const nextBtn = gallery.querySelector(".rg-next");
+  if(!left || !right || !center || !prevBtn || !nextBtn) return;
+
+  // кэш прелоада (как в твоём рабочем коде)
+  const cache = new Map();
+  function preload(url){
+    if(!url) return Promise.resolve();
+    if(cache.has(url)) return cache.get(url);
+
+    const p = new Promise(resolve=>{
+      const img = new Image();
+      img.decoding = "async";
+      img.onload = () => resolve(true);
+      img.onerror = () => resolve(false);
+      img.src = url;
+    });
+
+    cache.set(url, p);
+    return p;
+  }
+
+  // ✅ кэш “горизонтальная ли фотка”
+  const isWideCache = new Map();
+  function getIsWide(src){
+    if(isWideCache.has(src)) return Promise.resolve(isWideCache.get(src));
+
+    return new Promise(resolve=>{
+      const img = new Image();
+      img.onload = () => {
+        const wide = img.naturalWidth > img.naturalHeight;
+        isWideCache.set(src, wide);
+        resolve(wide);
+      };
+      img.onerror = () => {
+        isWideCache.set(src, false);
+        resolve(false);
+      };
+      img.src = src;
+    });
+  }
+
+  function showCenter(el){
+    center.innerHTML = "";
+    const img = document.createElement("img");
+    img.className = "rg-main";
+    img.decoding = "async";
+    img.loading = "eager";
+    img.fetchPriority = "high";
+    img.src = el.src;
+    center.appendChild(img);
+  }
+
+  async function show(i){
+    const t = ++token;
+
+    if(i < 0) i = elements.length - 1;
+    if(i >= elements.length) i = 0;
+    index = i;
+
+    const prev = (i - 1 + elements.length) % elements.length;
+    const next = (i + 1) % elements.length;
+
+    await Promise.all([
+      preload(elements[i].src),
+      preload(elements[prev].src),
+      preload(elements[next].src)
+    ]);
+
+    if(t !== token) return;
+
+    // сначала ставим картинки
+    left.src  = elements[prev].src;
+    right.src = elements[next].src;
+    showCenter(elements[i]);
+
+    // “второе кольцо” догружаем в фоне
+    preload(elements[(prev - 1 + elements.length) % elements.length].src);
+    preload(elements[(next + 1) % elements.length].src);
+
+    // ✅ если текущая горизонтальная — скрываем боковые полностью
+    const hideSides = await getIsWide(elements[i].src);
+    if(t !== token) return;
+
+    gallery.classList.toggle("rg-wide", hideSides);
+  }
+
+  prevBtn.addEventListener("click", ()=>show(index - 1));
+  nextBtn.addEventListener("click", ()=>show(index + 1));
+
+  // клавиши — только навигация
+  if(!window.__rgKeyHandler){
+    window.__rgKeyHandler = e=>{
+      const g = document.getElementById("rg-gallery");
+      if(!g || g.style.display === "none") return;
+      if(e.key === "ArrowRight") g.querySelector(".rg-next")?.click();
+      if(e.key === "ArrowLeft")  g.querySelector(".rg-prev")?.click();
+    };
+    document.addEventListener("keydown", window.__rgKeyHandler);
+  }
+
+  show(0);
+})();
+</script>
