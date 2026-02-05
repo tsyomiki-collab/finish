@@ -1,0 +1,419 @@
+<div id="rg-gallery">
+  <button class="rg-btn rg-prev" type="button" aria-label="Previous">⟨</button>
+
+  <div class="rg-wrapper">
+    <div class="rg-sideSlot">
+      <img id="rg-left" class="rg-side" alt="">
+    </div>
+
+    <div id="rg-center" class="rg-centerSlot"></div>
+
+    <div class="rg-sideSlot">
+      <img id="rg-right" class="rg-side" alt="">
+    </div>
+  </div>
+
+  <button class="rg-btn rg-next" type="button" aria-label="Next">⟩</button>
+</div>
+
+<style>
+#rg-gallery{
+  position:fixed;
+  inset:0;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  background:#fcfcfc;
+  z-index:9999;
+}
+
+.rg-wrapper{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  max-width:min(2000px, 96vw);
+  padding:0 110px;
+  box-sizing:border-box;
+}
+
+.rg-sideSlot{
+  width:360px;
+  height:330px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  overflow:hidden;
+  margin:0 -290px;   /* сближаем боковые к центру */
+}
+
+.rg-centerSlot{
+  width:min(1180px, 70vw);
+  height:735px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  overflow:hidden;
+}
+
+.rg-main{
+  width:100%;
+  height:100%;
+  object-fit:contain;
+  display:block;
+}
+
+.rg-side{
+  width:100%;
+  height:100%;
+  object-fit:contain;
+  opacity:.8;
+  display:block;
+}
+
+.rg-btn{
+  position:fixed;
+  top:50%;
+  transform:translateY(-50%);
+
+  width:120px;
+  height: 120px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  box-sizing:border-box;
+
+  font-size:3rem;
+  line-height:1;
+  padding:0;
+  border:0;
+  background:transparent;
+  color:#666;
+  cursor:pointer;
+  user-select:none;
+
+  appearance:none;
+  -webkit-appearance:none;
+  -webkit-tap-highlight-color:transparent;
+}
+
+.rg-btn:focus{ outline:none; }
+.rg-btn:focus-visible{
+  outline:2px solid rgba(0,0,0,.25);
+  outline-offset:3px;
+}
+
+.rg-btn:active{
+  transform:translateY(-50%);
+}
+
+.rg-prev{ left:80px; }
+.rg-next{ right:80px; }
+
+@media (max-width:820px){
+  .rg-sideSlot{ display:none; }
+  .rg-centerSlot{ width:92vw; }
+}
+
+/* меньше лагов */
+.rg-centerSlot, .rg-sideSlot { contain: layout paint size; }
+.rg-main { will-change: contents; }
+
+/* ✅ если текущий элемент горизонтальный — боковых НЕТ (и место не занимаем) */
+#rg-gallery.rg-wide .rg-sideSlot{
+  display:none;
+}
+
+/* подсказка для звука (когда браузер блокирует autoplay со звуком) */
+.rg-soundHint{
+  position:absolute;
+  left:50%;
+  bottom:14px;
+  transform:translateX(-50%);
+  padding:10px 14px;
+  font:14px/1.1 system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+  border:1px solid rgba(0,0,0,.12);
+  background:rgba(255,255,255,.92);
+  border-radius:999px;
+  color:#111;
+  cursor:pointer;
+  user-select:none;
+  display:none;
+}
+#rg-gallery.rg-needsTap .rg-soundHint{ display:block; }
+</style>
+
+<script>
+(function(){
+  const gallery = document.getElementById("rg-gallery");
+  if(!gallery) return;
+  if(gallery.dataset.rgInit === "1") return;
+  gallery.dataset.rgInit = "1";
+
+  // ✅ НОВЫЕ МАТЕРИАЛЫ (magata) + ВИДЕО
+  const elements=[
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/magata/main/1.jpg"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/magata/main/2.jpg"},
+    {
+      type:'video',
+      src:"https://res.cloudinary.com/dmtnse4sz/video/upload/v1769860723/3_jijb1p.mp4",
+      poster:"https://raw.githubusercontent.com/tsyomiki-collab/magata/main/Screenshot%202026-01-31%20at%2016.01.13.png"
+    },
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/magata/main/4.jpg"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/magata/main/5.jpg"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/magata/main/6.jpg"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/magata/main/7.jpg"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/magata/main/8.jpg"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/magata/main/9.jpg"}
+  ];
+
+  let index = 0;
+  let token = 0;
+
+  const left   = document.getElementById("rg-left");
+  const right  = document.getElementById("rg-right");
+  const center = document.getElementById("rg-center");
+  const prevBtn = gallery.querySelector(".rg-prev");
+  const nextBtn = gallery.querySelector(".rg-next");
+  if(!left || !right || !center || !prevBtn || !nextBtn) return;
+
+  // кнопка-подсказка для включения звука (если браузер запретит autoplay со звуком)
+  const soundHint = document.createElement("button");
+  soundHint.type = "button";
+  soundHint.className = "rg-soundHint";
+  soundHint.textContent = "tap for sound";
+  center.style.position = "relative";
+  center.appendChild(soundHint);
+
+  const imgCache = new Map();
+  const isWideCache = new Map();
+  let activeVideo = null;
+
+  function thumbSrc(el){
+    if(!el) return "";
+    if(el.type === "video") return el.poster || "";
+    return el.src || "";
+  }
+
+  function preloadImg(url){
+    if(!url) return Promise.resolve();
+    if(imgCache.has(url)) return imgCache.get(url);
+
+    const p = new Promise(resolve=>{
+      const img = new Image();
+      img.decoding = "async";
+      img.onload = () => resolve(true);
+      img.onerror = () => resolve(false);
+      img.src = url;
+    });
+
+    imgCache.set(url, p);
+    return p;
+  }
+
+  function getIsWide(el){
+    if(!el) return Promise.resolve(false);
+
+    const key = el.type === "video" ? ("v:" + (el.src||"")) : ("i:" + (el.src||""));
+    if(isWideCache.has(key)) return Promise.resolve(isWideCache.get(key));
+
+    // для видео: сперва пробуем по постеру (быстрее), если нет — по метаданным видео
+    if(el.type === "video"){
+      if(el.poster){
+        return new Promise(resolve=>{
+          const img = new Image();
+          img.onload = () => {
+            const wide = img.naturalWidth > img.naturalHeight;
+            isWideCache.set(key, wide);
+            resolve(wide);
+          };
+          img.onerror = () => {
+            // fallback: метаданные видео
+            const v = document.createElement("video");
+            v.preload = "metadata";
+            v.onloadedmetadata = () => {
+              const wide = v.videoWidth > v.videoHeight;
+              isWideCache.set(key, wide);
+              resolve(wide);
+              v.src = "";
+            };
+            v.onerror = () => {
+              isWideCache.set(key, false);
+              resolve(false);
+              v.src = "";
+            };
+            v.src = el.src;
+          };
+          img.src = el.poster;
+        });
+      }
+
+      return new Promise(resolve=>{
+        const v = document.createElement("video");
+        v.preload = "metadata";
+        v.onloadedmetadata = () => {
+          const wide = v.videoWidth > v.videoHeight;
+          isWideCache.set(key, wide);
+          resolve(wide);
+          v.src = "";
+        };
+        v.onerror = () => {
+          isWideCache.set(key, false);
+          resolve(false);
+          v.src = "";
+        };
+        v.src = el.src;
+      });
+    }
+
+    // img
+    return new Promise(resolve=>{
+      const img = new Image();
+      img.onload = () => {
+        const wide = img.naturalWidth > img.naturalHeight;
+        isWideCache.set(key, wide);
+        resolve(wide);
+      };
+      img.onerror = () => {
+        isWideCache.set(key, false);
+        resolve(false);
+      };
+      img.src = el.src;
+    });
+  }
+
+  function stopActiveVideo(){
+    if(activeVideo){
+      try{ activeVideo.pause(); }catch(e){}
+      activeVideo.src = "";
+      activeVideo.load?.();
+      activeVideo = null;
+    }
+    gallery.classList.remove("rg-needsTap");
+    soundHint.style.display = "none";
+  }
+
+  function showCenter(el){
+    stopActiveVideo();
+
+    // чистим центр, но оставляем soundHint (мы его обратно добавим)
+    center.innerHTML = "";
+    center.appendChild(soundHint);
+
+    if(el.type === "video"){
+      const v = document.createElement("video");
+      v.className = "rg-main";
+      v.src = el.src;
+      if(el.poster) v.poster = el.poster;
+
+      v.autoplay = true;
+      v.muted = false;          // ❗ просим autoplay СО ЗВУКОМ
+      v.playsInline = true;
+      v.loop = true;
+      v.controls = false;
+
+      // максимально “без панели”
+      v.setAttribute("controlslist","nodownload noplaybackrate noremoteplayback");
+      v.setAttribute("disablepictureinpicture","");
+
+      center.appendChild(v);
+      activeVideo = v;
+
+      // пробуем запустить со звуком; если браузер заблокирует — запускаем muted и просим тап для звука
+      const tryPlay = async ()=>{
+        try{
+          v.muted = false;
+          await v.play();
+          gallery.classList.remove("rg-needsTap");
+        }catch(err){
+          try{
+            v.muted = true;
+            await v.play();
+          }catch(e){}
+          gallery.classList.add("rg-needsTap");
+          soundHint.style.display = "block";
+        }
+      };
+
+      // если пользователь тапнул — включаем звук
+      soundHint.onclick = async ()=>{
+        if(!activeVideo) return;
+        try{
+          activeVideo.muted = false;
+          await activeVideo.play();
+          gallery.classList.remove("rg-needsTap");
+          soundHint.style.display = "none";
+        }catch(e){}
+      };
+
+      tryPlay();
+      return;
+    }
+
+    // img
+    const img = document.createElement("img");
+    img.className = "rg-main";
+    img.decoding = "async";
+    img.loading = "eager";
+    img.fetchPriority = "high";
+    img.src = el.src;
+    center.appendChild(img);
+  }
+
+  async function show(i){
+    const t = ++token;
+
+    if(i < 0) i = elements.length - 1;
+    if(i >= elements.length) i = 0;
+    index = i;
+
+    const prev = (i - 1 + elements.length) % elements.length;
+    const next = (i + 1) % elements.length;
+
+    // прелоадим ТОЛЬКО картинки/постеры
+    await Promise.all([
+      preloadImg(thumbSrc(elements[i])),
+      preloadImg(thumbSrc(elements[prev])),
+      preloadImg(thumbSrc(elements[next]))
+    ]);
+
+    if(t !== token) return;
+
+    // боковые превью (если видео — показываем poster)
+    left.src  = thumbSrc(elements[prev]) || "";
+    right.src = thumbSrc(elements[next]) || "";
+
+    showCenter(elements[i]);
+
+    // “второе кольцо” в фоне (тоже только картинки/постеры)
+    const prev2 = (prev - 1 + elements.length) % elements.length;
+    const next2 = (next + 1) % elements.length;
+    preloadImg(thumbSrc(elements[prev2]));
+    preloadImg(thumbSrc(elements[next2]));
+
+    // ✅ горизонтальная текущая — убираем боковые полностью
+    const wide = await getIsWide(elements[i]);
+    if(t !== token) return;
+    gallery.classList.toggle("rg-wide", wide);
+  }
+
+  // любая навигация — это “user gesture”, шанс включить звук на видео
+  function go(delta){
+    show(index + delta);
+  }
+
+  prevBtn.addEventListener("click", ()=>go(-1));
+  nextBtn.addEventListener("click", ()=>go(1));
+
+  if(!window.__rgKeyHandler){
+    window.__rgKeyHandler = e=>{
+      const g = document.getElementById("rg-gallery");
+      if(!g || g.style.display === "none") return;
+      if(e.key === "ArrowRight") g.querySelector(".rg-next")?.click();
+      if(e.key === "ArrowLeft")  g.querySelector(".rg-prev")?.click();
+    };
+    document.addEventListener("keydown", window.__rgKeyHandler);
+  }
+
+  show(0);
+})();
+</script>
