@@ -1,0 +1,294 @@
+<div id="rg-gallery">
+  <button class="rg-btn rg-prev" type="button" aria-label="Previous">⟨</button>
+
+  <div class="rg-wrapper">
+    <div class="rg-sideSlot">
+      <img id="rg-left" class="rg-side" alt="">
+    </div>
+
+    <div id="rg-center" class="rg-centerSlot"></div>
+
+    <div class="rg-sideSlot">
+      <img id="rg-right" class="rg-side" alt="">
+    </div>
+  </div>
+
+  <button class="rg-btn rg-next" type="button">⟩</button>
+</div>
+
+<style>
+#rg-gallery{
+  position:fixed;
+  inset:0;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  background:#fcfcfc;
+  z-index:9999;
+}
+
+.rg-wrapper{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  max-width:min(2000px, 96vw);
+  padding:0 110px;
+  box-sizing:border-box;
+  flex-wrap:nowrap;
+}
+
+.rg-sideSlot{
+  width:360px;
+  height:330px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  overflow:hidden;
+  margin:0 -290px;
+  flex:0 0 auto;
+}
+
+.rg-centerSlot{
+  width:min(1180px, 70vw);
+  height:735px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  overflow:hidden;
+  flex:0 0 auto;
+  position:relative;
+}
+
+.rg-main,
+.rg-side{
+  width:100%;
+  height:100%;
+  object-fit:contain;
+  object-position:center;
+  display:block;
+}
+
+.rg-side{ opacity:.8; }
+
+/* горизонтальные боковые уменьшаем */
+.rg-side.rg-wide{
+  transform:scale(.68);
+  transform-origin:center center;
+}
+
+/* видео в центре */
+.rg-video{
+  width:100%;
+  height:100%;
+  display:block;
+  object-fit:contain;
+  background:transparent;
+}
+
+/* аккуратная подсказка “tap for sound” по центру */
+.rg-unmute{
+  position:absolute;
+  left:50%;
+  top:50%;
+  transform:translate(-50%, -50%);
+  display:none;
+  z-index:5;
+  cursor:pointer;
+  user-select:none;
+  -webkit-tap-highlight-color:transparent;
+}
+.rg-unmute.is-on{ display:block; }
+
+.rg-unmute::after{
+  content:"tap for sound";
+  font:14px/1.2 system-ui, -apple-system, Segoe UI, Arial;
+  color:rgba(0,0,0,.6);
+  background:rgba(255,255,255,.75);
+  padding:8px 12px;
+  border-radius:999px;
+  box-shadow:0 6px 20px rgba(0,0,0,.08);
+  backdrop-filter:saturate(120%) blur(2px);
+}
+
+.rg-btn{
+  position:fixed;
+  top:50%;
+  transform:translateY(-50%);
+  width:120px;
+  height:120px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  box-sizing:border-box;
+  font-size:3rem;
+  line-height:1;
+  padding:0;
+  border:0;
+  background:transparent;
+  color:#666;
+  cursor:pointer;
+}
+.rg-prev{ left:80px; }
+.rg-next{ right:80px; }
+
+@media (max-width:820px){
+  .rg-sideSlot{ display:none; }
+  .rg-centerSlot{ width:92vw; }
+}
+</style>
+
+<script>
+(function(){
+  const gallery = document.getElementById("rg-gallery");
+  if(!gallery || gallery.dataset.rgInit === "1") return;
+  gallery.dataset.rgInit = "1";
+
+  /* yuki: горизонтальное только ПОСЛЕДНЕЕ видео */
+  const elements=[
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/yuki/main/1.png"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/yuki/main/2.png"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/yuki/main/3.png"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/yuki/main/4.png"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/yuki/main/5.png"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/yuki/main/6.png"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/yuki/main/7.png"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/yuki/main/8.png"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/yuki/main/9.png"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/yuki/main/10.png"},
+    {
+      type:'video',
+      src:"https://res.cloudinary.com/dmtnse4sz/video/upload/v1769448409/%E5%8D%83%E8%91%89%E9%9B%84%E5%96%9C_Yuki_Chiba_%E3%83%BC_%E3%83%81%E3%82%A7%E3%83%BC%E3%83%B3%E3%81%8C%E6%AD%8C%E3%81%86_Chain_Ga_Utau_Official_Music_Video_-_%E5%8D%83%E8%91%89_%E9%9B%84%E5%96%9C_Yuki_Chiba_1080p_h264_youtube_koptk0.mp4",
+      poster:"https://raw.githubusercontent.com/tsyomiki-collab/yuki/main/Screenshot%202026-01-26%20at%2021.32.09.png",
+      wide:true
+    }
+  ];
+
+  let index = 0;
+
+  const left   = document.getElementById("rg-left");
+  const right  = document.getElementById("rg-right");
+  const center = document.getElementById("rg-center");
+  const prevBtn = gallery.querySelector(".rg-prev");
+  const nextBtn = gallery.querySelector(".rg-next");
+
+  function thumbSrc(item){
+    return item.type === "video" ? (item.poster || "") : item.src;
+  }
+
+  function markSide(imgEl, item){
+    imgEl.classList.toggle("rg-wide", !!item.wide);
+  }
+
+  function setSidesHidden(h){
+    left.style.visibility  = h ? "hidden" : "visible";
+    right.style.visibility = h ? "hidden" : "visible";
+  }
+
+  function showCenter(item){
+    center.innerHTML = "";
+
+    if(item.type === "video"){
+      const v = document.createElement("video");
+      v.className = "rg-video";
+      v.src = item.src;
+      if(item.poster) v.poster = item.poster;
+
+      v.autoplay = true;
+      v.loop = true;
+      v.playsInline = true;
+      v.controls = false;
+
+      // хотим звук
+      v.muted = false;
+      v.volume = 1;
+
+      v.setAttribute("playsinline", "");
+      v.setAttribute("webkit-playsinline", "");
+
+      const unmute = document.createElement("div");
+      unmute.className = "rg-unmute";
+
+      center.appendChild(v);
+      center.appendChild(unmute);
+
+      const showOverlay = () => unmute.classList.add("is-on");
+      const hideOverlay = () => unmute.classList.remove("is-on");
+
+      const syncOverlay = () => {
+        if (v.muted || v.volume === 0) showOverlay();
+        else hideOverlay();
+      };
+
+      const tryPlayWithSound = () => {
+        v.muted = false;
+        v.volume = 1;
+        const p = v.play();
+        if(p && typeof p.catch === "function"){
+          p.catch(() => {
+            v.muted = true;
+            v.play().catch(()=>{});
+            showOverlay();
+          });
+        }
+      };
+
+      tryPlayWithSound();
+
+      setTimeout(() => {
+        if (v.paused || v.readyState < 2 || v.muted || v.volume === 0) {
+          v.muted = true;
+          v.play().catch(()=>{});
+          showOverlay();
+        } else {
+          hideOverlay();
+        }
+      }, 500);
+
+      v.addEventListener("play", syncOverlay);
+      v.addEventListener("volumechange", syncOverlay);
+
+      unmute.addEventListener("click", () => {
+        v.muted = false;
+        v.volume = 1;
+        const p2 = v.play();
+        if(p2 && typeof p2.catch === "function"){
+          p2.catch(() => showOverlay());
+        }
+        setTimeout(syncOverlay, 120);
+      });
+
+      return;
+    }
+
+    const img = document.createElement("img");
+    img.className = "rg-main";
+    img.src = item.src;
+    center.appendChild(img);
+  }
+
+  function show(i){
+    if(i < 0) i = elements.length - 1;
+    if(i >= elements.length) i = 0;
+    index = i;
+
+    const p = (i - 1 + elements.length) % elements.length;
+    const n = (i + 1) % elements.length;
+
+    left.src  = thumbSrc(elements[p]);
+    right.src = thumbSrc(elements[n]);
+
+    markSide(left, elements[p]);
+    markSide(right, elements[n]);
+
+    showCenter(elements[i]);
+
+    // правило: если центр горизонтальный (wide:true) — скрываем боковые
+    setSidesHidden(!!elements[i].wide);
+  }
+
+  prevBtn.onclick = ()=>show(index - 1);
+  nextBtn.onclick = ()=>show(index + 1);
+
+  show(0);
+})();
+</script>
