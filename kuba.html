@@ -1,0 +1,230 @@
+<div id="rg-gallery">
+  <button class="rg-btn rg-prev" type="button" aria-label="Previous">⟨</button>
+
+  <div class="rg-wrapper">
+    <div class="rg-sideSlot">
+      <img id="rg-left" class="rg-side" alt="">
+    </div>
+
+    <div id="rg-center" class="rg-centerSlot"></div>
+
+    <div class="rg-sideSlot">
+      <img id="rg-right" class="rg-side" alt="">
+    </div>
+  </div>
+
+  <button class="rg-btn rg-next" type="button" aria-label="Next">⟩</button>
+</div>
+
+<style>
+#rg-gallery{
+  position:fixed;
+  inset:0;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  background:#fcfcfc;
+  z-index:9999;
+}
+
+.rg-wrapper{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  max-width:min(2000px, 96vw);
+  padding:0 110px;
+  box-sizing:border-box;
+  flex-wrap:nowrap;
+}
+
+.rg-sideSlot{
+  width:360px;
+  height:330px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  overflow:hidden;
+  margin:0 -290px;
+  flex:0 0 auto;
+}
+
+.rg-centerSlot{
+  width:min(1180px, 70vw);
+  height:735px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  overflow:hidden;
+  flex:0 0 auto;
+  position:relative;
+}
+
+.rg-main,
+.rg-side{
+  width:100%;
+  height:100%;
+  object-fit:contain;
+  object-position:center;
+  display:block;
+}
+
+.rg-side{ opacity:.8; }
+
+.rg-side.rg-wide{
+  transform:scale(.68);
+  transform-origin:center center;
+}
+
+.rg-video{
+  width:100%;
+  height:100%;
+  display:block;
+  object-fit:contain;
+  background:transparent;
+}
+
+/* прозрачный слой для “tap to screen” */
+.rg-unmute{
+  position:absolute;
+  inset:0;
+  cursor:pointer;
+  display:none;
+  z-index:2;
+}
+.rg-unmute.is-on{ display:block; }
+
+.rg-btn{
+  position:fixed;
+  top:50%;
+  transform:translateY(-50%);
+  width:120px;
+  height:120px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  box-sizing:border-box;
+  font-size:3rem;
+  line-height:1;
+  padding:0;
+  border:0;
+  background:transparent;
+  color:#666;
+  cursor:pointer;
+  user-select:none;
+  appearance:none;
+  -webkit-appearance:none;
+  -webkit-tap-highlight-color:transparent;
+}
+.rg-prev{ left:80px; }
+.rg-next{ right:80px; }
+</style>
+
+<script>
+(function(){
+  const gallery = document.getElementById("rg-gallery");
+  if(!gallery || gallery.dataset.rgInit === "1") return;
+  gallery.dataset.rgInit = "1";
+
+  const elements=[
+    {
+      type:'video',
+      src:"https://res.cloudinary.com/dmtnse4sz/video/upload/v1769510229/video-2_sfc2rt.mp4",
+      poster:"https://raw.githubusercontent.com/tsyomiki-collab/kuba/main/photo_2026-01-31%2015.19.33.jpeg",
+      wide:true
+    },
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/kuba/main/1-4.png"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/kuba/main/2-4.png"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/kuba/main/3-4.png"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/kuba/main/4-4.png"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/kuba/main/witch44%20Kopie-2.jpg"}
+  ];
+
+  let index = 0;
+
+  const left   = document.getElementById("rg-left");
+  const right  = document.getElementById("rg-right");
+  const center = document.getElementById("rg-center");
+  const prevBtn = gallery.querySelector(".rg-prev");
+  const nextBtn = gallery.querySelector(".rg-next");
+
+  function thumbSrc(item){
+    return item.type === "video" ? (item.poster || "") : item.src;
+  }
+
+  function markSide(imgEl, item){
+    imgEl.classList.toggle("rg-wide", !!item.wide);
+  }
+
+  function setSidesHidden(h){
+    left.style.visibility  = h ? "hidden" : "visible";
+    right.style.visibility = h ? "hidden" : "visible";
+  }
+
+  function showCenter(item){
+    center.innerHTML = "";
+
+    if(item.type === "video"){
+      const v = document.createElement("video");
+      v.className = "rg-video";
+      v.src = item.src;
+      if(item.poster) v.poster = item.poster;
+      v.autoplay = true;
+      v.loop = true;
+      v.playsInline = true;
+      v.controls = false;
+      v.muted = false;
+
+      const unmute = document.createElement("div");
+      unmute.className = "rg-unmute";
+
+      center.appendChild(v);
+      center.appendChild(unmute);
+
+      const tryPlay = v.play();
+      if(tryPlay && typeof tryPlay.catch === "function"){
+        tryPlay.catch(()=>{
+          v.muted = true;
+          v.play().catch(()=>{});
+          unmute.classList.add("is-on");
+        });
+      }
+
+      unmute.addEventListener("click", ()=>{
+        unmute.classList.remove("is-on");
+        v.muted = false;
+        v.play().catch(()=>{});
+      });
+
+      return;
+    }
+
+    const img = document.createElement("img");
+    img.className = "rg-main";
+    img.src = item.src;
+    center.appendChild(img);
+  }
+
+  function show(i){
+    if(i < 0) i = elements.length - 1;
+    if(i >= elements.length) i = 0;
+    index = i;
+
+    const p = (i - 1 + elements.length) % elements.length;
+    const n = (i + 1) % elements.length;
+
+    left.src  = thumbSrc(elements[p]);
+    right.src = thumbSrc(elements[n]);
+
+    markSide(left, elements[p]);
+    markSide(right, elements[n]);
+
+    showCenter(elements[i]);
+    setSidesHidden(!!elements[i].wide);
+  }
+
+  prevBtn.onclick = ()=>show(index - 1);
+  nextBtn.onclick = ()=>show(index + 1);
+
+  show(0);
+})();
+</script>
