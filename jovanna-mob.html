@@ -1,0 +1,171 @@
+<div id="rg-gallery">
+  <div id="rg-stage">
+    <div id="rg-center">
+      <div class="rg-nav">
+        <button class="rg-btn rg-prev" type="button">⟨</button>
+        <button class="rg-btn rg-next" type="button">⟩</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- прогрев соединений -->
+<link rel="dns-prefetch" href="//raw.githubusercontent.com">
+<link rel="preconnect" href="https://raw.githubusercontent.com" crossorigin>
+
+<style>
+#rg-gallery{position:fixed;inset:0;background:#fcfcfc;z-index:9999;overflow:hidden}
+#rg-stage{position:absolute;inset:0;top:-60px;display:flex;align-items:center;justify-content:center;pointer-events:none}
+#rg-center{width:74vw;max-width:430px;height:50vh;max-height:460px;display:flex;align-items:center;justify-content:center;position:relative;pointer-events:none}
+.rg-main{max-width:100%;max-height:100%;object-fit:contain;display:block;pointer-events:auto}
+.rg-nav{position:absolute;left:50%;bottom:-65px;transform:translateX(-50%);display:flex;gap:25px;pointer-events:auto}
+.rg-btn{font-size:1.6rem;background:none;border:none;color:#666;cursor:pointer;padding:4px 8px;user-select:none;-webkit-tap-highlight-color:transparent}
+</style>
+
+<script>
+(function(){
+  const gallery=document.getElementById("rg-gallery");
+  if(!gallery||gallery.dataset.rgInit==="1")return;
+  gallery.dataset.rgInit="1";
+
+  const elements=[
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/jovan-s/main/1.png"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/jovan-s/main/2.png"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/jovan-s/main/3.png"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/jovan-s/main/4.png"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/jovan-s/main/5.png"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/jovan-s/main/6.png"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/jovan-s/main/7.png"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/jovan-s/main/8.png"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/jovan-s/main/9.png"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/jovan-s/main/10.jpg"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/jovan-s/main/11.png"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/jovan-s/main/12.png"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/jovan-s/main/13.png"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/jovan-s/main/14.png"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/jovan-s/main/15.png"}
+  ];
+
+  let index=0, token=0;
+
+  const center=document.getElementById("rg-center");
+  const prevBtn=gallery.querySelector(".rg-prev");
+  const nextBtn=gallery.querySelector(".rg-next");
+
+  // Кэш готовых нод + кэш "готовности" (load/decode)
+  const nodeCache = new Map();   // src -> <img>
+  const readyCache = new Map();  // src -> Promise
+
+  const ric = window.requestIdleCallback || ((cb)=>setTimeout(()=>cb({timeRemaining:()=>0}), 120));
+
+  function ensureImg(src){
+    if(nodeCache.has(src)) return nodeCache.get(src);
+
+    const img = new Image();
+    img.className = "rg-main";
+    img.decoding = "async";
+    img.loading = "eager";
+    img.src = src;
+
+    nodeCache.set(src, img);
+    return img;
+  }
+
+  function ensureReady(src){
+    if(readyCache.has(src)) return readyCache.get(src);
+
+    const img = ensureImg(src);
+
+    const p = new Promise((resolve)=>{
+      const done = async ()=>{
+        // decode делает "появилось сразу чётко"
+        if(img.decode){
+          try{ await img.decode(); }catch(e){}
+        }
+        resolve();
+      };
+
+      if(img.complete) { done(); return; }
+      img.onload = done;
+      img.onerror = done;
+    });
+
+    readyCache.set(src, p);
+    return p;
+  }
+
+  function setPriority(img, priority){
+    // Chromium поддерживает, Safari просто проигнорит
+    try{ img.fetchPriority = priority; }catch(e){}
+  }
+
+  function clearCenterKeepNav(){
+    const nav = center.querySelector(".rg-nav");
+    center.innerHTML = "";
+    if(nav) center.appendChild(nav);
+  }
+
+  function mountImg(src){
+    clearCenterKeepNav();
+    const img = ensureImg(src);
+    center.appendChild(img); // переиспользуем ту же ноду
+  }
+
+  function preloadAround(i){
+    const n = elements.length;
+    const prev = (i-1+n)%n;
+    const next = (i+1)%n;
+
+    const curSrc = elements[i].src;
+    const prevSrc = elements[prev].src;
+    const nextSrc = elements[next].src;
+
+    setPriority(ensureImg(curSrc), "high");
+    setPriority(ensureImg(prevSrc), "low");
+    setPriority(ensureImg(nextSrc), "low");
+
+    ensureReady(curSrc);
+    ensureReady(prevSrc);
+    ensureReady(nextSrc);
+
+    // ещё чуть дальше — в idle
+    ric(()=>{
+      ensureReady(elements[(prev-1+n)%n].src);
+      ensureReady(elements[(next+1)%n].src);
+    });
+  }
+
+  async function show(i){
+    const t = ++token;
+    const n = elements.length;
+
+    if(i<0) i=n-1;
+    if(i>=n) i=0;
+    index=i;
+
+    preloadAround(i);
+
+    const src = elements[i].src;
+
+    // ждём готовность текущей (load + decode)
+    await ensureReady(src);
+    if(t!==token) return;
+
+    mountImg(src);
+  }
+
+  prevBtn.onclick=()=>show(index-1);
+  nextBtn.onclick=()=>show(index+1);
+
+  let startX=0;
+  gallery.addEventListener("touchstart",e=>{startX=e.touches[0].clientX},{passive:true});
+  gallery.addEventListener("touchend",e=>{
+    const d=e.changedTouches[0].clientX-startX;
+    if(Math.abs(d)>40){ d<0?show(index+1):show(index-1); }
+  },{passive:true});
+
+  // старт
+  preloadAround(0);
+  show(0);
+})();
+</script>
