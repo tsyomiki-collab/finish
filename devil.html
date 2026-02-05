@@ -1,0 +1,413 @@
+не раьотает видео <div id="rg-gallery">
+  <button class="rg-btn rg-prev" type="button" aria-label="Previous">⟨</button>
+
+  <div class="rg-wrapper">
+    <div class="rg-sideSlot">
+      <img id="rg-left" class="rg-side" alt="">
+    </div>
+
+    <div id="rg-center" class="rg-centerSlot"></div>
+
+    <div class="rg-sideSlot">
+      <img id="rg-right" class="rg-side" alt="">
+    </div>
+  </div>
+
+  <button class="rg-btn rg-next" type="button" aria-label="Next">⟩</button>
+</div>
+
+<style>
+#rg-gallery{
+  position:fixed;
+  inset:0;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  background:#fcfcfc;
+  z-index:9999;
+}
+
+.rg-wrapper{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  max-width:min(2000px, 96vw);
+  padding:0 110px;
+  box-sizing:border-box;
+}
+
+.rg-sideSlot{
+  width:360px;
+  height:330px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  overflow:hidden;
+  margin:0 -290px;
+}
+
+.rg-centerSlot{
+  width:min(1180px, 70vw);
+  height:735px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  overflow:hidden;
+  position:relative;
+}
+
+.rg-main{
+  width:100%;
+  height:100%;
+  object-fit:contain;
+  display:block;
+}
+
+.rg-side{
+  width:100%;
+  height:100%;
+  object-fit:contain;
+  opacity:.8;
+  display:block;
+}
+
+.rg-btn{
+  position:fixed;
+  top:50%;
+  transform:translateY(-50%);
+  width:120px;
+  height:120px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  box-sizing:border-box;
+  font-size:3rem;
+  line-height:1;
+  padding:0;
+  border:0;
+  background:transparent;
+  color:#666;
+  cursor:pointer;
+  user-select:none;
+  appearance:none;
+  -webkit-appearance:none;
+  -webkit-tap-highlight-color:transparent;
+}
+.rg-btn:focus{ outline:none; }
+.rg-btn:focus-visible{
+  outline:2px solid rgba(0,0,0,.25);
+  outline-offset:3px;
+}
+.rg-btn:active{ transform:translateY(-50%); }
+.rg-prev{ left:80px; }
+.rg-next{ right:80px; }
+
+@media (max-width:820px){
+  .rg-sideSlot{ display:none; }
+  .rg-centerSlot{ width:92vw; }
+}
+
+/* ✅ чуть меньше лагов */
+.rg-centerSlot, .rg-sideSlot { contain: layout paint size; }
+
+/* ✅ “tap for sound” — аккуратно по центру, без прямоугольника */
+.rg-unmute{
+  position:absolute;
+  left:50%;
+  top:50%;
+  transform:translate(-50%, -50%);
+  display:none;
+  z-index:10;
+  cursor:pointer;
+  user-select:none;
+  -webkit-tap-highlight-color:transparent;
+}
+.rg-unmute.is-on{ display:block; }
+
+.rg-unmute::after{
+  content:"tap for sound";
+  font:14px/1.2 system-ui, -apple-system, Segoe UI, Arial;
+  color:rgba(0,0,0,.6);
+  background:rgba(255,255,255,.75);
+  padding:8px 12px;
+  border-radius:999px;
+  box-shadow:0 6px 20px rgba(0,0,0,.08);
+  backdrop-filter:saturate(120%) blur(2px);
+}
+
+/* ✅ оверлей-постер (оставила твой подход) */
+.rg-vOverlay{
+  position:absolute;
+  inset:0;
+  display:none;
+  align-items:center;
+  justify-content:center;
+  pointer-events:none;
+}
+.rg-vPoster{
+  position:absolute;
+  inset:0;
+  width:100%;
+  height:100%;
+  object-fit:contain;
+  display:block;
+}
+.rg-vPlay{
+  position:relative;
+  width:84px;
+  height:84px;
+  border-radius:999px;
+  background:rgba(255,255,255,.75);
+  border:1px solid rgba(0,0,0,.12);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-size:38px;
+  color:#111;
+  pointer-events:auto;
+  cursor:pointer;
+  user-select:none;
+}
+</style>
+
+<script>
+(function(){
+  const gallery = document.getElementById("rg-gallery");
+  if(!gallery) return;
+  if(gallery.dataset.rgInit === "1") return;
+  gallery.dataset.rgInit = "1";
+
+  const VIDEO_POSTER = "https://raw.githubusercontent.com/tsyomiki-collab/devil2/main/Screenshot%202026-02-03%20at%2019.01.32.png";
+
+  const elements=[
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/devil2/main/photo_2025-09-17%2001.41.48-2.webp"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/devil2/main/photo_2025-09-17%2001.50.23-2.webp"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/devil1/main/DevilAngel_ElenasKasnatschejew_TianaLenz_Editorial_3.webp"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/devil2/main/photo_2025-09-17%2001.57.15-2.webp"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/devil1/main/DevilAngel_ElenasKasnatschejew_TianaLenz_Editorial_5.webp"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/devil2/main/photo_2025-09-17%2001.59.22-2.webp"},
+    {
+      type:'video',
+      src:"https://res.cloudinary.com/dmtnse4sz/video/upload/v1770307019/IMG_3441_evuvsr.mp4",
+      poster: VIDEO_POSTER
+    },
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/devil2/main/photo_2025-09-17%2002.01.35-2.webp"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/devil2/main/photo_2025-09-17%2002.03.31-2.webp"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/devil2/main/photo_2025-09-17%2002.06.53-2.webp"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/devil2/main/DevilAngel_ElenasKasnatschejew_TianaLenz_Editorial_10.webp"}
+  ];
+
+  let index = 0;
+  let token = 0;
+
+  const left   = document.getElementById("rg-left");
+  const right  = document.getElementById("rg-right");
+  const center = document.getElementById("rg-center");
+  const prevBtn = gallery.querySelector(".rg-prev");
+  const nextBtn = gallery.querySelector(".rg-next");
+  if(!left || !right || !center || !prevBtn || !nextBtn) return;
+
+  // ---------- КЭШ КАРТИНОК ----------
+  const imgCache = new Map();
+  function preloadImage(url){
+    if(!url) return Promise.resolve();
+    if(imgCache.has(url)) return imgCache.get(url);
+    const p = new Promise(resolve=>{
+      const img = new Image();
+      img.decoding = "async";
+      img.onload = () => resolve(true);
+      img.onerror = () => resolve(false);
+      img.src = url;
+    });
+    imgCache.set(url, p);
+    return p;
+  }
+  function srcFor(el){ return el.type === "video" ? el.poster : el.src; }
+
+  // ---------- ПОСТОЯННЫЕ ЭЛЕМЕНТЫ В ЦЕНТРЕ ----------
+  center.innerHTML = "";
+  center.style.position = center.style.position || "relative";
+
+  const mainImg = document.createElement("img");
+  mainImg.className = "rg-main";
+  mainImg.decoding = "async";
+  mainImg.loading = "eager";
+  mainImg.fetchPriority = "high";
+  mainImg.style.display = "block";
+
+  const mainVideo = document.createElement("video");
+  mainVideo.className = "rg-main";
+  mainVideo.autoplay = true;
+  mainVideo.loop = true;
+  mainVideo.controls = false;
+  mainVideo.playsInline = true;
+  mainVideo.setAttribute("playsinline","");
+  mainVideo.setAttribute("webkit-playsinline","");
+  mainVideo.preload = "auto";
+  mainVideo.muted = true; // ✅ autoplay гарантированно стартует
+  mainVideo.style.display = "none";
+
+  // постер поверх (чтобы не было “пусто” до старта)
+  const vCover = document.createElement("img");
+  vCover.className = "rg-main";
+  vCover.style.position = "absolute";
+  vCover.style.inset = "0";
+  vCover.style.pointerEvents = "none";
+  vCover.style.display = "none";
+  vCover.decoding = "async";
+  vCover.loading = "eager";
+
+  // ✅ “tap for sound”
+  const unmuteBadge = document.createElement("div");
+  unmuteBadge.className = "rg-unmute";
+
+  center.appendChild(mainImg);
+  center.appendChild(mainVideo);
+  center.appendChild(vCover);
+  center.appendChild(unmuteBadge);
+
+  function showUnmute(show){
+    unmuteBadge.classList.toggle("is-on", !!show);
+  }
+
+  // ---------- СРАЗУ НАЧИНАЕМ ГРУЗИТЬ ВИДЕО ----------
+  const videoItem = elements.find(e => e.type === "video");
+  if(videoItem){
+    mainVideo.poster = videoItem.poster || "";
+    vCover.src = videoItem.poster || "";
+    mainVideo.src = videoItem.src;
+    try { mainVideo.load(); } catch(e) {}
+
+    // прогрев буфера (muted autoplay)
+    (async ()=>{
+      try { await mainVideo.play(); } catch(e) {}
+      try { mainVideo.pause(); } catch(e) {}
+    })();
+  }
+
+  // ---------- ВКЛЮЧЕНИЕ ЗВУКА ----------
+  let soundUnlocked = false;
+
+  async function unlockSound(){
+    soundUnlocked = true;
+    showUnmute(false);
+
+    try { mainVideo.muted = false; } catch(e) {}
+    try { mainVideo.volume = 1; } catch(e) {}
+
+    try { await mainVideo.play(); } catch(e) {
+      // если прям совсем не дали — оставим бейдж
+      showUnmute(true);
+      return;
+    }
+
+    window.removeEventListener("pointerdown", unlockSound);
+    window.removeEventListener("keydown", unlockSound);
+  }
+
+  // можно включить звук любым жестом, но бейдж тоже кликабельный
+  window.addEventListener("pointerdown", unlockSound, { passive:true });
+  window.addEventListener("keydown", unlockSound);
+  unmuteBadge.addEventListener("click", (e)=>{ e.preventDefault(); unlockSound(); });
+
+  // ---------- РЕНДЕР ----------
+  function showCenter(el){
+    if(el.type === "img"){
+      mainImg.style.display = "block";
+      mainVideo.style.display = "none";
+      vCover.style.display = "none";
+      showUnmute(false);
+
+      if(mainImg.src !== el.src) mainImg.src = el.src;
+      return;
+    }
+
+    // видео
+    mainImg.style.display = "none";
+    mainVideo.style.display = "block";
+    vCover.style.display = "block";
+    vCover.src = el.poster || "";
+
+    if(mainVideo.src !== el.src){
+      mainVideo.src = el.src;
+      mainVideo.poster = el.poster || "";
+      try { mainVideo.load(); } catch(e) {}
+    }
+
+    (async ()=>{
+      // 1) запускаем muted всегда
+      try {
+        if(!soundUnlocked) mainVideo.muted = true;
+        await mainVideo.play();
+      } catch(e) {}
+
+      // 2) если звук ещё не “разрешён” — показываем “tap for sound”
+      if(!soundUnlocked){
+        showUnmute(true);
+        return;
+      }
+
+      // 3) если уже “разрешён” — пробуем включить звук
+      try {
+        mainVideo.muted = false;
+        mainVideo.volume = 1;
+        await mainVideo.play();
+        showUnmute(false);
+      } catch(e) {
+        showUnmute(true);
+      }
+    })();
+  }
+
+  async function show(i){
+    const t = ++token;
+    if(i < 0) i = elements.length - 1;
+    if(i >= elements.length) i = 0;
+    index = i;
+
+    const prev = (i - 1 + elements.length) % elements.length;
+    const next = (i + 1) % elements.length;
+
+    const prevEl = elements[prev];
+    const nextEl = elements[next];
+    const curEl  = elements[i];
+
+    await Promise.all([
+      preloadImage(srcFor(curEl)),
+      preloadImage(srcFor(prevEl)),
+      preloadImage(srcFor(nextEl))
+    ]);
+    if(t !== token) return;
+
+    left.decoding = "async"; right.decoding = "async";
+    left.loading = "eager";  right.loading = "eager";
+    left.src  = srcFor(prevEl);
+    right.src = srcFor(nextEl);
+
+    showCenter(curEl);
+
+    const idle = window.requestIdleCallback || (fn=>setTimeout(fn,120));
+    idle(()=>{
+      const prev2 = (prev - 1 + elements.length) % elements.length;
+      const next2 = (next + 1) % elements.length;
+      preloadImage(srcFor(elements[prev2]));
+      preloadImage(srcFor(elements[next2]));
+    });
+  }
+
+  prevBtn.addEventListener("click", ()=>show(index - 1));
+  nextBtn.addEventListener("click", ()=>show(index + 1));
+
+  if(!window.__rgKeyHandler){
+    window.__rgKeyHandler = e=>{
+      const g = document.getElementById("rg-gallery");
+      if(!g || g.style.display === "none") return;
+      if(e.key === "ArrowRight") g.querySelector(".rg-next")?.click();
+      if(e.key === "ArrowLeft")  g.querySelector(".rg-prev")?.click();
+    };
+    document.addEventListener("keydown", window.__rgKeyHandler);
+  }
+
+  show(0);
+})();
+</script>
