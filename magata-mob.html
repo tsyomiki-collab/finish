@@ -1,0 +1,252 @@
+<div id="rg-gallery">
+  <div id="rg-stage">
+    <div id="rg-center">
+      <div class="rg-nav">
+        <button class="rg-btn rg-prev" type="button">⟨</button>
+        <button class="rg-btn rg-next" type="button">⟩</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- прогрев соединений (ускоряет старт запросов) -->
+<link rel="dns-prefetch" href="//raw.githubusercontent.com">
+<link rel="preconnect" href="https://raw.githubusercontent.com" crossorigin>
+<link rel="dns-prefetch" href="//res.cloudinary.com">
+<link rel="preconnect" href="https://res.cloudinary.com" crossorigin>
+
+<style>
+#rg-gallery{position:fixed;inset:0;background:#fcfcfc;z-index:9999;overflow:hidden}
+#rg-stage{position:absolute;inset:0;top:-60px;display:flex;align-items:center;justify-content:center;pointer-events:none}
+#rg-center{width:74vw;max-width:430px;height:50vh;max-height:460px;display:flex;align-items:center;justify-content:center;position:relative;pointer-events:none}
+.rg-main{max-width:100%;max-height:100%;object-fit:contain;display:block;pointer-events:auto}
+.rg-nav{position:absolute;left:50%;bottom:-65px;transform:translateX(-50%);display:flex;gap:25px;pointer-events:auto}
+.rg-btn{font-size:1.6rem;background:none;border:none;color:#666;cursor:pointer;padding:4px 8px;user-select:none;-webkit-tap-highlight-color:transparent}
+</style>
+
+<script>
+(function(){
+  const gallery=document.getElementById("rg-gallery");
+  if(!gallery||gallery.dataset.rgInit==="1")return;
+  gallery.dataset.rgInit="1";
+
+  const elements=[
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/magata/main/1.jpg"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/magata/main/2.jpg"},
+    {
+      type:'video',
+      src:"https://res.cloudinary.com/dmtnse4sz/video/upload/v1769860723/3_jijb1p.mp4",
+      poster:"https://raw.githubusercontent.com/tsyomiki-collab/magata/main/Screenshot%202026-01-31%20at%2016.01.13.png"
+    },
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/magata/main/4.jpg"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/magata/main/5.jpg"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/magata/main/6.jpg"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/magata/main/7.jpg"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/magata/main/8.jpg"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/magata/main/9.jpg"}
+  ];
+
+  const center=document.getElementById("rg-center");
+  const prevBtn=gallery.querySelector(".rg-prev");
+  const nextBtn=gallery.querySelector(".rg-next");
+
+  let index=0, token=0, currentVideo=null;
+
+  // Храним ГОТОВЫЕ DOM-ноды и промисы готовности
+  const nodeCache = new Map();      // key -> <img> / <video>
+  const readyCache = new Map();     // key -> Promise (декод/метаданные)
+
+  const ric = window.requestIdleCallback || ((cb)=>setTimeout(()=>cb({timeRemaining:()=>0}), 120));
+
+  function keyOf(el){ return el.type==="video" ? ("v:"+el.src) : ("i:"+el.src); }
+
+  function makeImg(src){
+    const img = new Image();
+    img.className = "rg-main";
+    img.decoding = "async";
+    img.loading = "eager"; // внутри попапа это норм
+    img.src = src;
+    return img;
+  }
+
+  function makeVideo(el){
+    const v = document.createElement("video");
+    v.className="rg-main";
+    v.src = el.src;
+    if(el.poster) v.poster = el.poster;
+
+    v.autoplay=true;
+    v.loop=true;
+    v.controls=false;
+    v.playsInline=true;
+    v.preload="auto";
+
+    v.setAttribute("controlsList","nodownload noplaybackrate noremoteplayback");
+    v.setAttribute("disablePictureInPicture","");
+    v.setAttribute("disableRemotePlayback","");
+    return v;
+  }
+
+  function setPriority(node, priority){
+    // Chromium: fetchpriority, Safari просто проигнорит — ок
+    if(node && node.tagName==="IMG"){
+      try{ node.fetchPriority = priority; }catch(e){}
+    }
+  }
+
+  function ensureNode(el){
+    const k = keyOf(el);
+    if(nodeCache.has(k)) return nodeCache.get(k);
+
+    const node = (el.type==="video") ? makeVideo(el) : makeImg(el.src);
+    nodeCache.set(k, node);
+    return node;
+  }
+
+  function ensureReady(el){
+    const k = keyOf(el);
+    if(readyCache.has(k)) return readyCache.get(k);
+
+    const p = new Promise((resolve)=>{
+      if(el.type==="img"){
+        const img = ensureNode(el);
+        img.onload = img.onerror = async () => {
+          // decode ускоряет «показалось сразу четко»
+          if(img.decode){
+            try{ await img.decode(); }catch(e){}
+          }
+          resolve();
+        };
+        // если уже закешировано браузером и complete=true
+        if(img.complete){
+          (async ()=>{
+            if(img.decode){
+              try{ await img.decode(); }catch(e){}
+            }
+            resolve();
+          })();
+        }
+      } else {
+        // видео: достаточно метаданных, чтобы вставка была “мгновенной”
+        const v = ensureNode(el);
+        v.onloadedmetadata = v.onerror = () => resolve();
+        // если метаданные уже есть
+        if(v.readyState >= 1) resolve();
+      }
+    });
+
+    readyCache.set(k, p);
+    return p;
+  }
+
+  function clearCenterKeepNav(){
+    const nav=center.querySelector(".rg-nav");
+    center.innerHTML="";
+    if(nav) center.appendChild(nav);
+  }
+
+  async function tryPlayWithSound(v){
+    v.muted=false;
+    try{ await v.play(); return true; }catch(e){}
+    return false;
+  }
+
+  async function startVideo(v){
+    if(await tryPlayWithSound(v)) return;
+
+    v.muted=true;
+    try{ await v.play(); }catch(e){}
+
+    const enable=async()=>{
+      v.muted=false;
+      try{ await v.play(); }catch(e){}
+      v.removeEventListener("click", enable);
+      v.removeEventListener("pointerdown", enable);
+      window.removeEventListener("keydown", onKey);
+    };
+    const onKey=()=>enable();
+
+    v.addEventListener("click", enable, {once:true});
+    v.addEventListener("pointerdown", enable, {once:true});
+    window.addEventListener("keydown", onKey, {once:true});
+  }
+
+  function mountNode(el){
+    clearCenterKeepNav();
+
+    if(currentVideo){
+      currentVideo.pause();
+      currentVideo = null;
+    }
+
+    const node = ensureNode(el);
+
+    // перекидываем ноду (одна и та же) — если она где-то была, просто отцепится
+    center.appendChild(node);
+
+    if(el.type==="video"){
+      currentVideo = node;
+      startVideo(node);
+    }
+  }
+
+  function preloadAround(i){
+    const prev=(i-1+elements.length)%elements.length;
+    const next=(i+1)%elements.length;
+
+    // текущий — высокий приоритет
+    const curNode = ensureNode(elements[i]);
+    setPriority(curNode, "high");
+
+    // соседи — низкий
+    setPriority(ensureNode(elements[prev]), "low");
+    setPriority(ensureNode(elements[next]), "low");
+
+    // запускаем “готовность”
+    ensureReady(elements[i]);
+    ensureReady(elements[prev]);
+    ensureReady(elements[next]);
+
+    // дальше по кругу — в idle, чтобы не забивать канал
+    ric(()=>{
+      ensureReady(elements[(prev-1+elements.length)%elements.length]);
+      ensureReady(elements[(next+1)%elements.length]);
+    });
+  }
+
+  async function show(i){
+    const t=++token;
+    if(i<0)i=elements.length-1;
+    if(i>=elements.length)i=0;
+    index=i;
+
+    preloadAround(i);
+
+    // Ждём готовность текущего (декод картинки / метаданные видео)
+    await ensureReady(elements[i]);
+    if(t!==token) return;
+
+    mountNode(elements[i]);
+  }
+
+  prevBtn.onclick=()=>show(index-1);
+  nextBtn.onclick=()=>show(index+1);
+
+  let startX=0;
+  gallery.addEventListener("touchstart",e=>{startX=e.touches[0].clientX},{passive:true});
+  gallery.addEventListener("touchend",e=>{
+    const d=e.changedTouches[0].clientX-startX;
+    if(Math.abs(d)>40){ d<0?show(index+1):show(index-1); }
+  },{passive:true});
+
+  // пауза видео, если вкладку свернули
+  document.addEventListener("visibilitychange", ()=>{
+    if(document.hidden && currentVideo) currentVideo.pause();
+    else if(!document.hidden && currentVideo) startVideo(currentVideo);
+  });
+
+  // старт: чуть заранее прогреем первый элемент
+  preloadAround(0);
+  show(0);
+})();
+</script>
