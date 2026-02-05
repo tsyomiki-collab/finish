@@ -1,0 +1,226 @@
+<div id="rg-gallery">
+  <button class="rg-btn rg-prev" type="button" aria-label="Previous">⟨</button>
+
+  <div class="rg-wrapper">
+    <div class="rg-sideSlot">
+      <img id="rg-left" class="rg-side" alt="">
+    </div>
+
+    <div id="rg-center" class="rg-centerSlot"></div>
+
+    <div class="rg-sideSlot">
+      <img id="rg-right" class="rg-side" alt="">
+    </div>
+  </div>
+
+  <button class="rg-btn rg-next" type="button" aria-label="Next">⟩</button>
+</div>
+
+<style>
+#rg-gallery{
+  position:fixed;
+  inset:0;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  background:#fcfcfc;
+  z-index:9999;
+}
+
+.rg-wrapper{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  max-width:min(2000px, 96vw);
+  padding:0 110px;
+  box-sizing:border-box;
+  flex-wrap:nowrap;
+}
+
+.rg-sideSlot{
+  width:360px;
+  height:330px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  overflow:hidden;
+  margin:0 -290px;
+  flex:0 0 auto;
+}
+
+.rg-centerSlot{
+  width:min(1180px, 70vw);
+  height:735px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  overflow:hidden;
+  flex:0 0 auto;
+}
+
+.rg-main,
+.rg-side{
+  width:100%;
+  height:100%;
+  object-fit:contain;
+  object-position:center;
+  display:block;
+}
+
+.rg-side{ opacity:.8; }
+
+.rg-side.rg-wide{
+  transform:scale(.68);
+  transform-origin:center center;
+}
+
+.rg-btn{
+  position:fixed;
+  top:50%;
+  transform:translateY(-50%);
+  width:120px;
+  height:120px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  box-sizing:border-box;
+  font-size:3rem;
+  line-height:1;
+  padding:0;
+  border:0;
+  background:transparent;
+  color:#666;
+  cursor:pointer;
+  user-select:none;
+  appearance:none;
+  -webkit-appearance:none;
+  -webkit-tap-highlight-color:transparent;
+}
+.rg-btn:focus{ outline:none; }
+.rg-btn:focus-visible{
+  outline:2px solid rgba(0,0,0,.25);
+  outline-offset:3px;
+}
+.rg-prev{ left:80px; }
+.rg-next{ right:80px; }
+
+@media (max-width:820px){
+  .rg-sideSlot{ display:none; }
+  .rg-centerSlot{ width:92vw; }
+}
+
+.rg-centerSlot, .rg-sideSlot { contain: layout paint size; }
+.rg-main { will-change: contents; }
+</style>
+
+<script>
+(function(){
+  const gallery = document.getElementById("rg-gallery");
+  if(!gallery || gallery.dataset.rgInit === "1") return;
+  gallery.dataset.rgInit = "1";
+
+  /* горизонтальные: 1, 2, 7, 10, 12 */
+  const elements=[
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/shell/main/1.jpg",  wide:true},  // 1
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/shell/main/4.jpg",  wide:true},  // 2
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/shell/main/2.jpg"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/shell/main/3.jpg"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/shell/main/5.jpg"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/shell/main/7.jpg"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/shell/main/6.jpg",  wide:true},  // 7
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/shell/main/8.jpg"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/shell/main/10.jpg"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/shell/main/9.jpg",  wide:true},  // 10
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/shell/main/11.png"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/shell/main/12.jpg", wide:true},  // 12
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/shell/main/13.jpeg"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/shell/main/14.jpeg"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/shell/main/15.jpeg"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/shell/main/16.jpeg"}
+  ];
+
+  let index = 0, token = 0;
+
+  const left   = document.getElementById("rg-left");
+  const right  = document.getElementById("rg-right");
+  const center = document.getElementById("rg-center");
+  const prevBtn = gallery.querySelector(".rg-prev");
+  const nextBtn = gallery.querySelector(".rg-next");
+  if(!left || !right || !center || !prevBtn || !nextBtn) return;
+
+  const preloadCache = new Map();
+
+  function preload(src){
+    if(!src) return Promise.resolve();
+    if(preloadCache.has(src)) return preloadCache.get(src);
+
+    const p = new Promise(resolve=>{
+      const img = new Image();
+      img.decoding = "async";
+      img.onload = () => resolve(true);
+      img.onerror = () => resolve(false);
+      img.src = src;
+    });
+
+    preloadCache.set(src, p);
+    return p;
+  }
+
+  function showCenter(el){
+    center.innerHTML = "";
+    const img = document.createElement("img");
+    img.className = "rg-main";
+    img.decoding = "async";
+    img.loading = "eager";
+    img.fetchPriority = "high";
+    img.src = el.src;
+    center.appendChild(img);
+  }
+
+  function setSidesHidden(h){
+    left.style.visibility  = h ? "hidden" : "visible";
+    right.style.visibility = h ? "hidden" : "visible";
+  }
+
+  function markSide(imgEl, item){
+    imgEl.classList.toggle("rg-wide", !!item.wide);
+  }
+
+  async function show(i){
+    const t = ++token;
+
+    if(i < 0) i = elements.length - 1;
+    if(i >= elements.length) i = 0;
+    index = i;
+
+    const p = (i - 1 + elements.length) % elements.length;
+    const n = (i + 1) % elements.length;
+
+    await Promise.all([
+      preload(elements[i].src),
+      preload(elements[p].src),
+      preload(elements[n].src)
+    ]);
+    if(t !== token) return;
+
+    left.src  = elements[p].src;
+    right.src = elements[n].src;
+
+    markSide(left, elements[p]);
+    markSide(right, elements[n]);
+
+    showCenter(elements[i]);
+
+    /* правило: если ЦЕНТРАЛЬНАЯ wide:true — скрываем боковые */
+    setSidesHidden(!!elements[i].wide);
+
+    preload(elements[(p - 1 + elements.length) % elements.length].src);
+    preload(elements[(n + 1) % elements.length].src);
+  }
+
+  prevBtn.addEventListener("click", ()=>show(index - 1));
+  nextBtn.addEventListener("click", ()=>show(index + 1));
+
+  show(0);
+})();
+</script>
