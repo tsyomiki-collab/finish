@@ -1,24 +1,8 @@
-<div id="rg-gallery">
-  <button class="rg-btn rg-prev" type="button" aria-label="Previous">⟨</button>
-
-  <div class="rg-wrapper">
-    <div class="rg-sideSlot">
-      <span class="rg-loading" aria-hidden="true">loading...</span>
-      <img id="rg-left" class="rg-side" alt="">
-    </div>
-
-    <div id="rg-center" class="rg-centerSlot">
-      <span class="rg-loading is-on" aria-hidden="true">loading...</span>
-    </div>
-
-    <div class="rg-sideSlot">
-      <span class="rg-loading" aria-hidden="true">loading...</span>
-      <img id="rg-right" class="rg-side" alt="">
-    </div>
-  </div>
-
-  <button class="rg-btn rg-next" type="button" aria-label="Next">⟩</button>
-</div>
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 
 <style>
 @font-face{
@@ -50,10 +34,11 @@
   max-width:min(2000px, 96vw);
   padding:0 110px;
   box-sizing:border-box;
+  flex-wrap:nowrap;
 }
 
 .rg-sideSlot{
-  position:relative;
+  position:relative; /* для loading */
   width:360px;
   height:330px;
   display:flex;
@@ -61,16 +46,18 @@
   justify-content:center;
   overflow:hidden;
   margin:0 -290px;
+  flex:0 0 auto;
 }
 
 .rg-centerSlot{
-  position:relative;
+  position:relative; /* для loading + poster overlay */
   width:min(1180px, 70vw);
   height:735px;
   display:flex;
   align-items:center;
   justify-content:center;
   overflow:hidden;
+  flex:0 0 auto;
 }
 
 .rg-main,
@@ -83,29 +70,6 @@
 }
 
 .rg-side{ opacity:.8; }
-
-/* loader */
-.rg-loading{
-  position:absolute;
-  left:50%;
-  top:50%;
-  transform:translate(-50%,-50%);
-  font-family:"SegoeUI","Segoe UI",-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif;
-  font-weight:300;
-  font-size:14px;
-  letter-spacing:.01em;
-  line-height:16px;
-  color:#fff;
-  mix-blend-mode:difference;
-  opacity:.9;
-  pointer-events:none;
-  user-select:none;
-  display:none;
-}
-.rg-loading.is-on{ display:block; }
-
-.rg-side.is-loading,
-.rg-main.is-loading{ opacity:0; }
 
 .rg-btn{
   position:fixed;
@@ -142,8 +106,65 @@
   .rg-centerSlot{ width:92vw; }
 }
 
+/* меньше лагов */
 .rg-centerSlot, .rg-sideSlot { contain: layout paint size; }
+.rg-main { will-change: contents; }
+
+/* loader */
+.rg-loading{
+  position:absolute;
+  left:50%;
+  top:50%;
+  transform:translate(-50%,-50%);
+  font-family:"SegoeUI","Segoe UI",-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif;
+  font-weight:300;
+  font-size:14px;
+  letter-spacing:.01em;
+  line-height:16px;
+
+  /* mix blend, как ты хотела */
+  color:#fff;
+  mix-blend-mode:difference;
+  opacity:.9;
+
+  pointer-events:none;
+  user-select:none;
+  display:none;
+}
+.rg-loading.is-on{ display:block; }
+
+.rg-side.is-loading,
+.rg-main.is-loading{ opacity:0; }
+
+/* если текущая картинка/постер горизонтальные — скрываем боковые */
+#rg-gallery.rg-wide .rg-sideSlot{ display:none; }
 </style>
+</head>
+
+<body>
+
+<div id="rg-gallery">
+  <button class="rg-btn rg-prev" type="button" aria-label="Previous">⟨</button>
+
+  <div class="rg-wrapper">
+    <div class="rg-sideSlot">
+      <span class="rg-loading" aria-hidden="true">loading...</span>
+      <img id="rg-left" class="rg-side" alt="">
+    </div>
+
+    <div id="rg-center" class="rg-centerSlot">
+      <span class="rg-loading is-on" aria-hidden="true">loading...</span>
+      <!-- центр будет заполнен через JS -->
+    </div>
+
+    <div class="rg-sideSlot">
+      <span class="rg-loading" aria-hidden="true">loading...</span>
+      <img id="rg-right" class="rg-side" alt="">
+    </div>
+  </div>
+
+  <button class="rg-btn rg-next" type="button" aria-label="Next">⟩</button>
+</div>
 
 <script>
 (function(){
@@ -190,6 +211,7 @@
   function preloadImage(url){
     if(!url) return Promise.resolve(false);
     if(imgCache.has(url)) return imgCache.get(url);
+
     const p = new Promise(resolve=>{
       const img = new Image();
       img.decoding = "async";
@@ -197,12 +219,37 @@
       img.onerror = () => resolve(false);
       img.src = url;
     });
+
     imgCache.set(url, p);
     return p;
   }
-  function srcFor(el){ return el.type === "video" ? (el.poster||"") : (el.src||""); }
+  function srcFor(el){
+    return el.type === "video" ? (el.poster || "") : (el.src || "");
+  }
+
+  // wide detector (по реально загруженной картинке/постеру)
+  const isWideCache = new Map();
+  function getIsWideByImage(src){
+    if(!src) return Promise.resolve(false);
+    if(isWideCache.has(src)) return Promise.resolve(isWideCache.get(src));
+    return new Promise(resolve=>{
+      const img = new Image();
+      img.decoding = "async";
+      img.onload = ()=>{
+        const wide = img.naturalWidth > img.naturalHeight;
+        isWideCache.set(src, wide);
+        resolve(wide);
+      };
+      img.onerror = ()=>{
+        isWideCache.set(src, false);
+        resolve(false);
+      };
+      img.src = src;
+    });
+  }
 
   // center nodes (persistent)
+  center.style.position = "relative";
   center.innerHTML = '<span class="rg-loading is-on" aria-hidden="true">loading...</span>';
 
   const mainImg = document.createElement("img");
@@ -224,23 +271,21 @@
   mainVideo.className = "rg-main";
   mainVideo.style.display = "none";
 
-  // важные атрибуты для iOS
+  // важные атрибуты для iOS + без панели
   mainVideo.setAttribute("playsinline","");
   mainVideo.setAttribute("webkit-playsinline","");
   mainVideo.setAttribute("muted","");
   mainVideo.setAttribute("autoplay","");
   mainVideo.setAttribute("loop","");
   mainVideo.setAttribute("preload","auto");
-  mainVideo.setAttribute("controls","false");
   mainVideo.setAttribute("controlslist","nodownload noplaybackrate noremoteplayback");
   mainVideo.setAttribute("disablepictureinpicture","");
 
-  // и свойства тоже
   mainVideo.playsInline = true;
   mainVideo.autoplay = true;
   mainVideo.loop = true;
   mainVideo.controls = false;
-  mainVideo.muted = true; // ✅ всегда без звука
+  mainVideo.muted = true;     // ✅ всегда без звука
   mainVideo.preload = "auto";
 
   center.appendChild(mainImg);
@@ -248,7 +293,6 @@
   center.appendChild(mainVideo);
 
   function tryStartVideo(){
-    // iOS иногда стартует только после loadeddata/canplay — поэтому пробуем несколько раз
     const p = mainVideo.play();
     if(p && typeof p.catch === "function") p.catch(()=>{});
   }
@@ -256,11 +300,13 @@
   function showCenter(item){
     setLoading(center, true);
 
+    // reset view
     mainImg.style.display = "none";
     mainVideo.style.display = "none";
     posterImg.style.display = "none";
 
-    // снимаем прошлые слушатели (чтобы не накапливались)
+    // cleanup old handlers
+    mainImg.onload = mainImg.onerror = null;
     mainVideo.onplaying = null;
     mainVideo.oncanplay = null;
     mainVideo.onloadeddata = null;
@@ -269,13 +315,21 @@
     if(item.type === "img"){
       mainImg.style.display = "block";
       mainImg.classList.add("is-loading");
-      mainImg.onload = ()=>{ mainImg.classList.remove("is-loading"); setLoading(center,false); };
-      mainImg.onerror= ()=>{ mainImg.classList.remove("is-loading"); setLoading(center,false); };
+
+      mainImg.onload = ()=>{
+        mainImg.classList.remove("is-loading");
+        setLoading(center,false);
+      };
+      mainImg.onerror = ()=>{
+        mainImg.classList.remove("is-loading");
+        setLoading(center,false);
+      };
+
       if(mainImg.src !== item.src) mainImg.src = item.src;
       return;
     }
 
-    // VIDEO: держим постер как “фон” пока не playing
+    // VIDEO: держим постер поверх, пока видео реально не playing
     posterImg.style.display = "block";
     posterImg.src = item.poster || "";
 
@@ -286,26 +340,20 @@
       try{ mainVideo.load(); }catch(e){}
     }
 
-    // когда реально пошло — убираем постер и лоадер
     mainVideo.onplaying = ()=>{
       posterImg.style.display = "none";
       setLoading(center,false);
     };
 
-    // на canplay/loadeddata тоже пытаемся стартануть
     mainVideo.oncanplay = tryStartVideo;
     mainVideo.onloadeddata = tryStartVideo;
 
-    // если ошибка — просто убираем лоадер и оставляем постер (чтобы не белый экран)
     mainVideo.onerror = ()=>{
       setLoading(center,false);
-      posterImg.style.display = "block";
+      posterImg.style.display = "block"; // не белый экран
     };
 
-    // первый старт
     tryStartVideo();
-
-    // второй старт (иногда помогает на iOS)
     setTimeout(tryStartVideo, 200);
   }
 
@@ -318,10 +366,27 @@
     imgEl.loading = "eager";
     imgEl.fetchPriority = "low";
 
-    imgEl.onload = ()=>{ imgEl.classList.remove("is-loading"); setLoading(slot,false); };
-    imgEl.onerror= ()=>{ imgEl.classList.remove("is-loading"); setLoading(slot,false); };
+    imgEl.onload = ()=>{
+      imgEl.classList.remove("is-loading");
+      setLoading(slot,false);
+    };
+    imgEl.onerror = ()=>{
+      imgEl.classList.remove("is-loading");
+      setLoading(slot,false);
+    };
 
     imgEl.src = srcFor(item) || "";
+  }
+
+  function setSidesHiddenViaClass(hide){
+    // ✅ важно: если скрываем боковые — выключаем их лоадеры, чтобы не было “двойного loading”
+    gallery.classList.toggle("rg-wide", !!hide);
+    if(hide){
+      setLoading(left.parentElement, false);
+      setLoading(right.parentElement, false);
+      left.classList.remove("is-loading");
+      right.classList.remove("is-loading");
+    }
   }
 
   async function show(i){
@@ -334,6 +399,7 @@
     const prev = (i - 1 + elements.length) % elements.length;
     const next = (i + 1) % elements.length;
 
+    // сразу включаем loading
     setLoading(center, true);
     setLoading(left.parentElement, true);
     setLoading(right.parentElement, true);
@@ -349,11 +415,17 @@
     setSide(right, elements[next]);
     showCenter(elements[i]);
 
+    // второе кольцо — в фоне
     const idle = window.requestIdleCallback || (fn=>setTimeout(fn,120));
     idle(()=>{
       preloadImage(srcFor(elements[(prev - 1 + elements.length) % elements.length]));
       preloadImage(srcFor(elements[(next + 1) % elements.length]));
     }, {timeout:600});
+
+    // ✅ hide sides если текущий кадр (или его постер) горизонтальный
+    const wide = await getIsWideByImage(srcFor(elements[i]));
+    if(t !== token) return;
+    setSidesHiddenViaClass(wide);
   }
 
   prevBtn.addEventListener("click", ()=>show(index - 1));
@@ -372,3 +444,6 @@
   show(0);
 })();
 </script>
+
+</body>
+</html>
