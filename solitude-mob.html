@@ -1,10 +1,7 @@
 <div id="rg-gallery">
   <div id="rg-stage">
     <div id="rg-center">
-      <!-- LOADING поверх белого экрана -->
       <span class="rg-loading is-on" aria-hidden="true">loading...</span>
-
-      <!-- TAP (только если звук заблокирован) -->
       <button class="rg-tap rg-hidden" type="button">tap for sound</button>
 
       <div class="rg-nav">
@@ -38,17 +35,26 @@
 #rg-gallery{position:fixed;inset:0;background:#fcfcfc;z-index:9999;overflow:hidden}
 #rg-stage{position:absolute;inset:0;top:-60px;display:flex;align-items:center;justify-content:center;pointer-events:none}
 
-/* ✅ размеры как в твоём коде со стрелками */
+/* базовый (портретный) контейнер — визуал как в первом коде */
 #rg-center{
   width:86vw;max-width:520px;
   height:62vh;max-height:560px;
   display:flex;align-items:center;justify-content:center;
   position:relative;
 
-  /* ✅ ВАЖНО: чтобы стрелки реально работали */
+  /* важно для кликов по стрелкам/тапу */
   pointer-events:auto;
 
+  /* чуть стабильнее рендер */
   contain:layout paint size;
+}
+
+/* ✅ ВАЖНО для горизонтальных:
+   когда медиа "landscape", расширяем контейнер по ширине,
+   чтобы горизонтальные не казались в 2 раза меньше. */
+#rg-center.rg-landscape{
+  width:92vw;
+  max-width:820px;
 }
 
 /* медиа */
@@ -64,8 +70,6 @@
 .rg-nav{
   position:absolute;left:50%;bottom:-65px;transform:translateX(-50%);
   display:flex;gap:25px;pointer-events:auto;
-
-  /* ✅ чтобы не прятались под медиа */
   z-index:10;
 }
 .rg-btn{
@@ -73,7 +77,7 @@
   padding:4px 8px;user-select:none;-webkit-tap-highlight-color:transparent
 }
 
-/* ✅ LOADING */
+/* LOADING (mix blend, size 10, weight 300) */
 .rg-loading{
   position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
   font-family:"SegoeUI","Segoe UI",-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif;
@@ -93,7 +97,7 @@
 }
 .rg-loading.is-on{display:block}
 
-/* ✅ TAP */
+/* TAP (тот же шрифт/size 10) */
 .rg-tap{
   position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
   z-index:11;
@@ -126,8 +130,12 @@
 
   const CLOUD="dmtnse4sz";
   const DPR=Math.max(1, Math.min(3, window.devicePixelRatio||1));
-  const W_IMG=Math.min(1800, Math.ceil(520 * DPR * 1.65));
-  const W_POSTER=Math.min(1600, Math.ceil(520 * DPR * 1.15));
+
+  // базовая ширина под портретный max-width:520
+  const W_IMG      = Math.min(2000, Math.ceil(520 * DPR * 1.65));
+  const W_POSTER   = Math.min(1600, Math.ceil(520 * DPR * 1.15));
+  // для горизонтальных — берём чуть больше (чтобы не мыло на расширенном контейнере)
+  const W_IMG_WIDE = Math.min(2600, Math.ceil(820 * DPR * 1.25));
 
   function cldFetchImg(url, w){
     return `https://res.cloudinary.com/${CLOUD}/image/fetch/f_auto,q_auto:eco,fl_progressive,w_${w}/${encodeURIComponent(url)}`;
@@ -136,6 +144,9 @@
   const VIDEO_POSTER_ORIG="https://raw.githubusercontent.com/tsyomiki-collab/devil2/main/Screenshot%202026-02-03%20at%2019.01.32.png";
   const VIDEO_POSTER=cldFetchImg(VIDEO_POSTER_ORIG, W_POSTER);
 
+  // =========================================================
+  // ✅ МАТЕРИАЛЫ: вставь сюда elementsRaw ИЗ ВТОРОГО КОДА
+  // (я оставил твой текущий список — можешь заменить/дополнить)
   const elementsRaw=[
     {type:'img',src:"https://github.com/tsyomiki-collab/devil2/raw/main/photo_2025-09-17%2001.41.48-2.webp"},
     {type:'img',src:"https://github.com/tsyomiki-collab/devil2/raw/main/photo_2025-09-17%2001.50.23-2.webp"},
@@ -143,18 +154,25 @@
     {type:'img',src:"https://github.com/tsyomiki-collab/devil2/raw/main/photo_2025-09-17%2001.57.15-2.webp"},
     {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/devil1/main/DevilAngel_ElenasKasnatschejew_TianaLenz_Editorial_5.webp"},
     {type:'img',src:"https://github.com/tsyomiki-collab/devil2/raw/main/photo_2025-09-17%2001.59.22-2.webp"},
-    {type:'video',src:"https://res.cloudinary.com/dmtnse4sz/video/upload/v1769438095/Editorial_AngelundDevil_TokioHeavenAndHell43_pzzoaq.mp4",poster:VIDEO_POSTER},
+    {
+      type:'video',
+      src:"https://res.cloudinary.com/dmtnse4sz/video/upload/v1769438095/Editorial_AngelundDevil_TokioHeavenAndHell43_pzzoaq.mp4",
+      poster:VIDEO_POSTER
+    },
     {type:'img',src:"https://github.com/tsyomiki-collab/devil2/raw/main/photo_2025-09-17%2002.01.35-2.webp"},
     {type:'img',src:"https://github.com/tsyomiki-collab/devil2/raw/main/photo_2025-09-17%2002.03.31-2.webp"},
     {type:'img',src:"https://github.com/tsyomiki-collab/devil2/raw/main/photo_2025-09-17%2002.06.53-2.webp"},
     {type:'img',src:"https://github.com/tsyomiki-collab/devil2/raw/main/DevilAngel_ElenasKasnatschejew_TianaLenz_Editorial_10.webp"}
   ];
+  // =========================================================
 
+  // картинки режем/жмём через Cloudinary fetch (базово)
   const elements = elementsRaw.map(el=>{
-    if(el.type==="img") return {...el, src: cldFetchImg(el.src, W_IMG)};
+    if(el.type==="img") return {...el, src: cldFetchImg(el.src, W_IMG), __orig: el.src};
     return el;
   });
 
+  let index=0, token=0, currentVideo=null;
   const center=document.getElementById("rg-center");
   const prevBtn=gallery.querySelector(".rg-prev");
   const nextBtn=gallery.querySelector(".rg-next");
@@ -163,32 +181,45 @@
   const tapBtn  = center.querySelector(".rg-tap");
   const nav     = center.querySelector(".rg-nav");
 
+  const nodeCache=new Map();   // key -> node
+  const readyCache=new Map();  // key -> Promise
+  const ric = window.requestIdleCallback || ((cb)=>setTimeout(()=>cb({timeRemaining:()=>0}), 120));
+
   function setLoading(on){ loading.classList.toggle("is-on", !!on); }
   function setTap(on){ tapBtn.classList.toggle("rg-hidden", !on); }
 
-  // чистим только медиа, UI не трогаем
-  function removeMedia(){
-    const old = center.querySelector(".rg-main");
-    if(old){
-      if(old.tagName==="VIDEO"){ try{ old.pause(); }catch(e){} }
-      old.remove();
-    }
-  }
-
-  const nodeCache=new Map();
-  const readyCache=new Map();
-  const ric = window.requestIdleCallback || ((cb)=>setTimeout(()=>cb({timeRemaining:()=>0}), 120));
   function keyOf(el){ return el.type==="video" ? ("v:"+el.src) : ("i:"+el.src); }
+
+  // сохраняем UI (loading/tap/nav), убираем только медиа
+  function clearCenterKeepUI(){
+    const keepLoading = loading;
+    const keepTap = tapBtn;
+    const keepNav = nav;
+
+    center.innerHTML = "";
+    center.appendChild(keepLoading);
+    center.appendChild(keepTap);
+    center.appendChild(keepNav);
+
+    if(currentVideo){
+      try{ currentVideo.pause(); }catch(e){}
+      currentVideo = null;
+    }
+    setTap(false);
+    center.classList.remove("rg-landscape");
+  }
 
   function ensureImg(src){
     const k="i:"+src;
     if(nodeCache.has(k)) return nodeCache.get(k);
+
     const img=new Image();
     img.className="rg-main";
     img.decoding="async";
     img.loading="eager";
     try{ img.fetchPriority="high"; }catch(e){}
     img.src=src;
+
     nodeCache.set(k,img);
     return img;
   }
@@ -199,13 +230,17 @@
 
     const v=document.createElement("video");
     v.className="rg-main";
-    v.autoplay=true; v.loop=true; v.controls=false;
 
+    v.autoplay=true;
+    v.loop=true;
+    v.controls=false;
     v.playsInline=true;
     v.setAttribute("playsinline","");
     v.setAttribute("webkit-playsinline","");
 
-    v.muted=true; v.volume=0;
+    // стартуем muted (чтобы autoplay точно)
+    v.muted=true;
+    v.volume=0;
     v.setAttribute("muted","");
     v.setAttribute("autoplay","");
     v.setAttribute("loop","");
@@ -230,8 +265,10 @@
       if(el.type==="img"){
         const img=ensureImg(el.src);
         const done = async ()=>{
-          if(img.decode){ try{ await img.decode(); }catch(e){} }
-          resolve();
+          if(img.decode){
+            try{ await img.decode(); }catch(e){}
+          }
+          resolve(true);
         };
         if(img.complete){ done(); return; }
         img.onload=done; img.onerror=done;
@@ -239,7 +276,7 @@
         if(el.poster) ensureReady({type:"img", src: el.poster});
         const v=document.createElement("video");
         v.preload="metadata";
-        v.onloadedmetadata=v.onerror=()=>resolve();
+        v.onloadedmetadata=v.onerror=()=>resolve(true);
         v.src=el.src;
       }
     });
@@ -248,57 +285,108 @@
     return p;
   }
 
-  let index=0;
   let audioUnlocked=false;
-  let currentVideo=null;
 
   async function tryPlayWithSound(v){
-    try{ v.muted=false; v.volume=1; await v.play(); return true; }catch(e){ return false; }
+    try{
+      v.muted=false;
+      v.volume=1;
+      await v.play();
+      return true;
+    }catch(e){
+      return false;
+    }
   }
 
-  async function startVideo(v){
-    setTap(false);
+  function armAudioUnlock(){
+    if(audioUnlocked) return;
 
-    if(audioUnlocked){
-      if(await tryPlayWithSound(v)) return;
-    } else {
-      if(await tryPlayWithSound(v)){ audioUnlocked=true; return; }
-    }
-
-    try{ v.muted=true; v.volume=0; await v.play(); }catch(e){}
-    setTap(true);
-
-    // разлочим звук на первом жесте
     const unlock = async ()=>{
       audioUnlocked=true;
       setTap(false);
-      if(currentVideo) await tryPlayWithSound(currentVideo);
+      if(currentVideo){
+        await tryPlayWithSound(currentVideo);
+      }
     };
+
     window.addEventListener("pointerdown", unlock, {once:true, passive:true});
     window.addEventListener("touchstart", unlock, {once:true, passive:true});
     window.addEventListener("keydown", unlock, {once:true});
   }
 
-  async function mount(el){
-    removeMedia();
+  async function startVideo(v){
+    if(audioUnlocked){
+      await tryPlayWithSound(v);
+      setTap(false);
+      return;
+    }
+
+    if(await tryPlayWithSound(v)){
+      audioUnlocked=true;
+      setTap(false);
+      return;
+    }
+
+    try{
+      v.muted=true;
+      v.volume=0;
+      await v.play();
+    }catch(e){}
+    setTap(true);
+    armAudioUnlock();
+  }
+
+  // ✅ определяем ориентацию фото и при landscape расширяем контейнер,
+  // + подменяем URL на более широкий W_IMG_WIDE (чтобы не мыло).
+  function applyHorizontalFix(el, img){
+    if(el.type!=="img") return;
+
+    const nw = img.naturalWidth || 0;
+    const nh = img.naturalHeight || 0;
+    const isLandscape = (nw && nh) ? (nw > nh) : false;
+
+    center.classList.toggle("rg-landscape", isLandscape);
+
+    // если landscape и у нас есть оригинальный URL — перезапросим шире (1 раз)
+    if(isLandscape && el.__orig && !el.__wideApplied){
+      el.__wideApplied = true;
+      const wideUrl = cldFetchImg(el.__orig, W_IMG_WIDE);
+
+      // обновим кеш-ключ: используем новый src, но чтобы не ломать кэш —
+      // просто задаём img.src = wideUrl (браузер сам решит).
+      img.src = wideUrl;
+    }
+  }
+
+  function showCenter(el){
+    clearCenterKeepUI();
     setLoading(true);
     setTap(false);
 
     if(el.type==="img"){
-      const img=ensureImg(el.src);
-      const done=()=>setLoading(false);
-      if(img.complete) done();
-      else { img.addEventListener("load", done, {once:true}); img.addEventListener("error", done, {once:true}); }
+      const img = ensureImg(el.src);
 
-      // вставляем перед nav чтобы стрелки всегда сверху
+      const afterReady = ()=>{
+        setLoading(false);
+        applyHorizontalFix(el, img);
+      };
+
+      if(img.complete){
+        afterReady();
+      } else {
+        img.addEventListener("load", afterReady, {once:true});
+        img.addEventListener("error", ()=>setLoading(false), {once:true});
+      }
+
       center.insertBefore(img, nav);
       return;
     }
 
-    const v=ensureVideo(el);
-    currentVideo=v;
+    const v = ensureVideo(el);
+    currentVideo = v;
+    center.classList.remove("rg-landscape");
 
-    const done=()=>setLoading(false);
+    const done = ()=>setLoading(false);
     v.addEventListener("playing", done, {once:true});
     v.addEventListener("canplay", done, {once:true});
     v.addEventListener("error", done, {once:true});
@@ -323,30 +411,42 @@
   }
 
   function show(i){
+    const t=++token;
     const n=elements.length;
     if(i<0)i=n-1;
     if(i>=n)i=0;
     index=i;
 
     setLoading(true);
+    setTap(false);
+
+    showCenter(elements[i]);
     preloadAround(i);
-    mount(elements[i]);
+
+    return t;
   }
 
   tapBtn.addEventListener("click", async ()=>{
     if(!currentVideo) return;
     const ok = await tryPlayWithSound(currentVideo);
-    if(ok){ audioUnlocked=true; setTap(false); }
+    if(ok){
+      audioUnlocked=true;
+      setTap(false);
+    } else {
+      setTap(true);
+      armAudioUnlock();
+    }
   });
 
   prevBtn.onclick=()=>show(index-1);
   nextBtn.onclick=()=>show(index+1);
 
+  // свайп
   let startX=0;
   gallery.addEventListener("touchstart",e=>{startX=e.touches[0].clientX},{passive:true});
   gallery.addEventListener("touchend",e=>{
     const d=e.changedTouches[0].clientX-startX;
-    if(Math.abs(d)>40){ d<0?show(index+1):show(index-1); }
+    if(Math.abs(d)>40){ d<0?show(index+1):show(index-1) }
   },{passive:true});
 
   show(0);
