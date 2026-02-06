@@ -1,3 +1,6 @@
+<!-- ✅ РЕКОМЕНДУЮ добавить в <head> страницы внутри iframe (devil.html), если можно -->
+<!-- <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"> -->
+
 <div id="rg-gallery">
   <button class="rg-btn rg-prev" type="button" aria-label="Previous">⟨</button>
 
@@ -32,32 +35,28 @@
   font-style:normal;
   font-display:swap;
 }
+*,*::before,*::after{box-sizing:border-box}
 
-*,
-*::before,
-*::after{ box-sizing:border-box; }
-
-/* ✅ тут регулируешь размер */
+/* ✅ ЕДИНЫЕ РАЗМЕРЫ В PX (самое одинаковое на разных маках/браузерах) */
 :root{
-  /* было .90 — стало крупнее, как на твоём 2 фото */
-  --ui-scale: 1.08; /* попробуй 1.05–1.12 */
+  /* один-единственный регулятор (если нужно чуть крупнее/мельче) */
+  --ui-scale: 1;
 
-  /* чуть больше “сцена”, чтобы не было ощущения мелкоты */
-  --wrap-max: 1600px;
+  /* сцена */
+  --wrap-max: 1400px;
+  --wrap-pad: 110px;
 
-  /* центр крупнее */
-  --center-w: clamp(640px, 72vw, 980px);
-  --center-h: clamp(520px, 68vh, 760px);
+  /* центр */
+  --center-w: 980px;
+  --center-h: 760px;
 
-  /* боковые крупнее (но всё ещё меньше центра) */
-  --side-w:   clamp(220px, 26vw, 320px);
-  --side-h:   clamp(200px, 24vh, 300px);
+  /* боковые */
+  --side-w: 420px;
+  --side-h: 360px;
+  --side-pull: -435px; /* ближе к центру: было -290, теперь плотнее */
 
-  /* расстояние/наезд боковых к центру (чуть меньше “внутрь”, чтобы было чище) */
-  --side-pull: clamp(-160px, -16vw, -240px);
-
-  --wrap-pad:  clamp(60px, 8vw, 110px);
-  --arrow-side: clamp(22px, 4vw, 90px);
+  /* стрелки как раньше */
+  --arrow-offset: 80px;
 }
 
 #rg-gallery{
@@ -70,13 +69,11 @@
   z-index:9999;
 }
 
-/* масштабируем “сцену” внутри iframe */
 .rg-wrapper{
   display:flex;
   align-items:center;
   justify-content:center;
-  width:96vw;
-  max-width:var(--wrap-max);
+  width:min(var(--wrap-max), 96vw);
   padding:0 var(--wrap-pad);
   flex-wrap:nowrap;
 
@@ -97,6 +94,7 @@
   flex:0 0 auto;
 }
 
+/* центр */
 .rg-centerSlot{
   position:relative;
   width:var(--center-w);
@@ -124,7 +122,7 @@
   transform-origin:center center;
 }
 
-/* когда центр wide:true — боковые скрываем полностью */
+/* wide:true → боковые полностью скрыты */
 #rg-gallery.rg-wide .rg-sideSlot{ display:none; }
 
 /* loading... */
@@ -181,25 +179,25 @@
   outline:2px solid rgba(0,0,0,.25);
   outline-offset:3px;
 }
-.rg-prev{ left:var(--arrow-side); }
-.rg-next{ right:var(--arrow-side); }
+.rg-prev{ left:var(--arrow-offset); }
+.rg-next{ right:var(--arrow-offset); }
 
+/* ✅ Мобилка: боковые скрываем, центр адаптируем */
 @media (max-width:820px){
   .rg-sideSlot{ display:none; }
-
-  /* на мобиле масштаб не нужен */
   .rg-wrapper{
     transform:none;
     width:100vw;
     padding:0;
   }
-
   .rg-centerSlot{
     width:92vw;
     height:62vh;
+    max-height:640px;
   }
 }
 
+/* чуть спокойнее перерисовки */
 .rg-centerSlot, .rg-sideSlot { contain: layout paint size; }
 .rg-main { will-change: contents; }
 </style>
@@ -285,7 +283,6 @@
 
   function showCenter(item){
     setLoading(center, true);
-
     center.innerHTML = '<span class="rg-loading is-on" aria-hidden="true">loading...</span>';
 
     const img = document.createElement("img");
