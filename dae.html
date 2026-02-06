@@ -20,7 +20,23 @@
   <button class="rg-btn rg-next" type="button" aria-label="Next">⟩</button>
 </div>
 
+<!-- прогрев доменов под картинки -->
+<link rel="dns-prefetch" href="//raw.githubusercontent.com">
+<link rel="preconnect" href="https://raw.githubusercontent.com" crossorigin>
+
 <style>
+@font-face{
+  font-family:"SegoeUI";
+  src:
+    local("Segoe UI Light"),
+    url("https://c.s-microsoft.com/static/fonts/segoe-ui/west-european/light/latest.woff2") format("woff2"),
+    url("https://c.s-microsoft.com/static/fonts/segoe-ui/west-european/light/latest.woff") format("woff"),
+    url("https://c.s-microsoft.com/static/fonts/segoe-ui/west-european/light/latest.ttf") format("truetype");
+  font-weight:300;
+  font-style:normal;
+  font-display:swap;
+}
+
 #rg-gallery{
   position:fixed;
   inset:0;
@@ -112,15 +128,13 @@
   top:50%;
   transform:translate(-50%,-50%);
   font-family:"SegoeUI","Segoe UI",-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif;
-  font-weight:300;       /* кстати у тебя тут 600 — если надо light, ставь 300 */
-  font-size:13px;
+  font-weight:300;
+  font-size:10px;
   letter-spacing:.01em;
-  line-height:16px;
-
+  line-height:14px;
   color:#fff;
   mix-blend-mode:difference;
   opacity:.9;
-
   pointer-events:none;
   user-select:none;
   display:none;
@@ -167,6 +181,12 @@
   if(!left || !right || !center || !prevBtn || !nextBtn) return;
 
   const cache = new Map();
+
+  function setLoading(slot, on){
+    const l = slot.querySelector(".rg-loading");
+    if(l) l.classList.toggle("is-on", on);
+  }
+
   function preload(url){
     if(!url) return Promise.resolve(false);
     if(cache.has(url)) return cache.get(url);
@@ -174,18 +194,13 @@
     const p = new Promise(resolve=>{
       const img = new Image();
       img.decoding = "async";
-      img.onload  = () => resolve(true);
-      img.onerror = () => resolve(false);
+      img.onload  = ()=>resolve(true);
+      img.onerror = ()=>resolve(false);
       img.src = url;
     });
 
     cache.set(url, p);
     return p;
-  }
-
-  function setLoading(slot, on){
-    const l = slot.querySelector(".rg-loading");
-    if(l) l.classList.toggle("is-on", on);
   }
 
   function setSide(imgEl, src){
@@ -201,8 +216,8 @@
       setLoading(slot,false); 
     };
     imgEl.onerror = ()=>{ 
-      imgEl.classList.remove("is-loading"); 
-      setLoading(slot,false); 
+      imgEl.classList.add("is-loading");
+      setLoading(slot,true);
     };
 
     imgEl.src = src;
@@ -223,8 +238,8 @@
       setLoading(center,false); 
     };
     img.onerror = ()=>{ 
-      img.classList.remove("is-loading"); 
-      setLoading(center,false); 
+      img.classList.add("is-loading");
+      setLoading(center,true); 
     };
 
     img.src = el.src;
@@ -241,7 +256,6 @@
     const prev = (i - 1 + elements.length) % elements.length;
     const next = (i + 1) % elements.length;
 
-    // грузим текущую + соседние
     await Promise.all([
       preload(elements[i].src),
       preload(elements[prev].src),
@@ -254,7 +268,6 @@
     setSide(right, elements[next].src);
     showCenter(elements[i]);
 
-    // второе кольцо — в фоне
     preload(elements[(prev - 1 + elements.length) % elements.length].src);
     preload(elements[(next + 1) % elements.length].src);
   }
