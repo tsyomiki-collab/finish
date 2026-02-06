@@ -1,11 +1,12 @@
 <div id="rg-gallery">
   <div id="rg-stage">
     <div id="rg-center">
-      <!-- (1) LOADING -->
       <span class="rg-loading is-on" aria-hidden="true">loading...</span>
 
-      <!-- (2) TAP FOR SOUND: как в in my room -->
-      <button class="rg-tap" type="button" aria-label="Tap to screen">tap to screen</button>
+      <!-- ✅ tap визуал как в in my room -->
+      <button class="rg-tap" type="button" aria-label="Tap to screen">
+        tap for sound
+      </button>
 
       <div class="rg-nav">
         <button class="rg-btn rg-prev" type="button">⟨</button>
@@ -66,11 +67,11 @@
 }
 .rg-loading.is-on{display:block}
 
-/* ✅ TAP как во втором коде (in my room) */
+/* ✅ TAP — 1:1 как в in my room */
 .rg-tap{
   position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
   z-index:5;
-  display:none;              /* показываем через #rg-center.needs-tap */
+  display:none;                 /* показываем через #rg-center.needs-tap */
   pointer-events:auto;
   cursor:pointer;
 
@@ -113,6 +114,7 @@
   const CLOUD="dmtnse4sz";
   const DPR=Math.max(1, Math.min(3, window.devicePixelRatio||1));
   const TARGET_W=Math.min(1800, Math.ceil(520 * DPR * 1.6));
+
   function cldFetch(url){
     return `https://res.cloudinary.com/${CLOUD}/image/fetch/f_auto,q_auto:eco,fl_progressive,w_${TARGET_W}/${encodeURIComponent(url)}`;
   }
@@ -139,9 +141,7 @@
   function keyOf(el){ return el.type==="video" ? ("v:"+el.src) : ("i:"+el.src); }
 
   function setLoading(on){ loadingEl.classList.toggle("is-on", !!on); }
-
-  /* ✅ ВАЖНО: вместо tapBtn.is-on используем класс на center */
-  function setNeedsTap(on){ center.classList.toggle("needs-tap", !!on); }
+  function setNeedsTap(on){ center.classList.toggle("needs-tap", !!on); }  // ✅ вот это главное
 
   function clearCenterKeepUI(){
     center.innerHTML="";
@@ -186,7 +186,6 @@
 
     if(el.poster) v.poster=el.poster;
 
-    // autoplay сначала muted (iOS/iframe)
     v.muted=true;
     v.volume=0;
     v.setAttribute("muted","");
@@ -229,6 +228,7 @@
   function forceAutoplayMuted(v){
     let tries=0;
     const MAX=24;
+
     const attempt=()=>{
       if(!v) return;
       if(!v.paused) return;
@@ -240,7 +240,7 @@
       const p=v.play();
       if(p && typeof p.catch==="function"){
         p.catch(()=>{ if(tries<MAX) requestAnimationFrame(attempt); });
-      }else{
+      } else {
         if(tries<MAX) requestAnimationFrame(attempt);
       }
     };
@@ -292,11 +292,10 @@
     center.insertBefore(v, navEl);
     currentVideo=v;
 
-    // autoplay muted + потом пробуем звук
     forceAutoplayMuted(v);
+
     setTimeout(()=>{ if(currentVideo===v) tryEnableSound(v); }, 120);
 
-    // любой первый жест тоже пробует включить звук
     gallery.addEventListener("pointerdown", unlockSound, {once:true, passive:true, capture:true});
     gallery.addEventListener("touchstart", unlockSound, {once:true, passive:true, capture:true});
     window.addEventListener("keydown", unlockSound, {once:true, capture:true});
