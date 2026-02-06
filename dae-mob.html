@@ -1,7 +1,12 @@
-```html
 <div id="rg-gallery">
   <div id="rg-stage">
     <div id="rg-center">
+      <span class="rg-loading" aria-hidden="true">loading...</span>
+
+      <button class="rg-tap" type="button" aria-label="Tap to screen">
+        tap to screen
+      </button>
+
       <div class="rg-nav">
         <button class="rg-btn rg-prev" type="button">⟨</button>
         <button class="rg-btn rg-next" type="button">⟩</button>
@@ -11,12 +16,56 @@
 </div>
 
 <style>
+@font-face{
+  font-family:"SegoeUI";
+  src:
+    local("Segoe UI Light"),
+    url("https://c.s-microsoft.com/static/fonts/segoe-ui/west-european/light/latest.woff2") format("woff2"),
+    url("https://c.s-microsoft.com/static/fonts/segoe-ui/west-european/light/latest.woff") format("woff"),
+    url("https://c.s-microsoft.com/static/fonts/segoe-ui/west-european/light/latest.ttf") format("truetype");
+  font-weight:300;
+  font-style:normal;
+  font-display:swap;
+}
+
 #rg-gallery{position:fixed;inset:0;background:#fcfcfc;z-index:9999;overflow:hidden}
 #rg-stage{position:absolute;inset:0;top:-60px;display:flex;align-items:center;justify-content:center;pointer-events:none}
-#rg-center{width:74vw;max-width:430px;height:50vh;max-height:460px;display:flex;align-items:center;justify-content:center;position:relative;pointer-events:none}
+
+/* bigger center (отступы к стрелкам те же) */
+#rg-center{
+  width:92vw;max-width:560px;
+  height:64vh;max-height:640px;
+  display:flex;align-items:center;justify-content:center;
+  position:relative;pointer-events:none
+}
+
 .rg-main{max-width:100%;max-height:100%;object-fit:contain;display:block;pointer-events:auto}
+
 .rg-nav{position:absolute;left:50%;bottom:-65px;transform:translateX(-50%);display:flex;gap:25px;pointer-events:auto}
 .rg-btn{font-size:1.6rem;background:none;border:none;color:#666;cursor:pointer;padding:4px 8px;user-select:none;-webkit-tap-highlight-color:transparent}
+
+/* loading mix-blend */
+.rg-loading{
+  position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
+  font-family:"SegoeUI","Segoe UI",-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif;
+  font-weight:300;font-size:14px;letter-spacing:.01em;line-height:16px;
+  color:#fff;mix-blend-mode:difference;opacity:.9;
+  pointer-events:none;user-select:none;display:none;
+}
+#rg-center.is-loading .rg-loading{display:block}
+
+/* tap to screen (твои параметры) */
+.rg-tap{
+  position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
+  z-index:5;display:none;pointer-events:auto;cursor:pointer;
+  font-family:"SegoeUI","Segoe UI",-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif;
+  font-weight:300;
+  font-size:8px;line-height:16px;letter-spacing:0.01em;white-space:nowrap;color:#000;
+  padding:6px 10px;background:rgba(255,255,255,.95);
+  border:1px solid rgba(0,0,0,.14);border-radius:999px;
+  -webkit-tap-highlight-color:transparent;
+}
+#rg-center.needs-tap .rg-tap{display:block}
 </style>
 
 <script>
@@ -43,105 +92,191 @@
     {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/dae/main/15.png"}
   ];
 
-  let index=0,token=0,currentVideo=null;
+  let index=0, token=0, currentVideo=null;
   const center=document.getElementById("rg-center");
   const prevBtn=gallery.querySelector(".rg-prev");
   const nextBtn=gallery.querySelector(".rg-next");
+  const tapBtn = center.querySelector(".rg-tap");
   const cache=new Map();
 
-  function preloadImage(src){
-    if(!src)return Promise.resolve();
-    if(cache.has(src))return cache.get(src);
-    const p=new Promise(r=>{const i=new Image();i.decoding="async";i.onload=i.onerror=()=>r();i.src=src});
-    cache.set(src,p);return p;
+  const idle = window.requestIdleCallback || ((fn)=>setTimeout(fn, 120));
+
+  function setLoading(on){ center.classList.toggle("is-loading", !!on); }
+  function setNeedsTap(on){ center.classList.toggle("needs-tap", !!on); }
+
+  // ✅ быстрее: используем decode() когда можно
+  function preloadImage(src, priority){
+    if(!src) return Promise.resolve();
+    const key = "i:" + src;
+    if(cache.has(key)) return cache.get(key);
+
+    const p = new Promise(resolve=>{
+      const img = new Image();
+      img.decoding = "async";
+      // iOS иногда игнорит fetchPriority, но ок
+      if(priority) img.fetchPriority = priority;
+      img.onload = async ()=>{
+        try{ if(img.decode) await img.decode(); }catch(e){}
+        resolve(true);
+      };
+      img.onerror = ()=>resolve(false);
+      img.src = src;
+    });
+
+    cache.set(key, p);
+    return p;
   }
 
-  function preloadVideo(src){
-    if(!src)return Promise.resolve();
-    const k="v:"+src;
-    if(cache.has(k))return cache.get(k);
-    const p=new Promise(r=>{const v=document.createElement("video");v.preload="metadata";v.onloadedmetadata=v.onerror=()=>r();v.src=src});
-    cache.set(k,p);return p;
+  // ✅ видео не грузим “по полной” заранее — только мета (и постер)
+  function preloadVideoMeta(src){
+    if(!src) return Promise.resolve();
+    const key = "v:" + src;
+    if(cache.has(key)) return cache.get(key);
+
+    const p = new Promise(resolve=>{
+      const v = document.createElement("video");
+      v.preload = "metadata";
+      v.onloadedmetadata = ()=>resolve(true);
+      v.onerror = ()=>resolve(false);
+      v.src = src;
+    });
+
+    cache.set(key, p);
+    return p;
   }
 
-  function preloadElement(el){
-    return el.type==="video"?Promise.all([preloadImage(el.poster),preloadVideo(el.src)]):preloadImage(el.src);
+  function preloadElement(el, priority){
+    if(el.type==="video"){
+      return Promise.all([
+        preloadImage(el.poster, priority || "high"),
+        preloadVideoMeta(el.src)
+      ]);
+    }
+    return preloadImage(el.src, priority || "high");
   }
 
   function clearCenter(){
     const nav=center.querySelector(".rg-nav");
+    const loader=center.querySelector(".rg-loading");
+    const tap=center.querySelector(".rg-tap");
     center.innerHTML="";
-    if(nav)center.appendChild(nav);
+    if(loader) center.appendChild(loader);
+    if(tap) center.appendChild(tap);
+    if(nav) center.appendChild(nav);
   }
 
   async function tryPlayWithSound(v){
-    v.muted=false;
-    try{ await v.play(); return true; }catch(e){}
-    return false;
+    try{ v.muted=false; await v.play(); return true; }catch(e){ return false; }
   }
 
   async function startVideo(v){
+    setNeedsTap(false);
+
+    // 1) сразу со звуком
     if(await tryPlayWithSound(v)) return;
 
-    v.muted=true;
+    // 2) fallback muted + tap
+    v.muted = true;
     try{ await v.play(); }catch(e){}
+    setNeedsTap(true);
 
-    const enable=async()=>{
+    const enable = async ()=>{
+      setNeedsTap(false);
       v.muted=false;
-      try{ await v.play(); }catch(e){}
-      v.removeEventListener("click", enable);
-      v.removeEventListener("pointerdown", enable);
-      window.removeEventListener("keydown", onKey);
+      try{ await v.play(); }catch(e){ setNeedsTap(true); }
     };
-    const onKey=()=>enable();
 
-    v.addEventListener("click", enable, {once:true});
-    v.addEventListener("pointerdown", enable, {once:true});
-    window.addEventListener("keydown", onKey, {once:true});
+    tapBtn.onclick = enable;
+    v.addEventListener("click", enable, {once:false});
+    v.addEventListener("pointerdown", enable, {once:false});
   }
 
-  function showCenter(el){
+  function showCenterEl(el){
     clearCenter();
-    if(currentVideo){currentVideo.pause();currentVideo=null}
+    setLoading(true);
+    setNeedsTap(false);
+
+    if(currentVideo){
+      try{ currentVideo.pause(); }catch(e){}
+      currentVideo=null;
+    }
 
     if(el.type==="img"){
       const img=document.createElement("img");
-      img.src=el.src;img.className="rg-main";img.decoding="async";img.loading="eager";
-      center.appendChild(img);return;
+      img.className="rg-main";
+      img.decoding="async";
+      img.loading="eager";
+      img.fetchPriority="high";
+
+      img.onload = ()=>setLoading(false);
+      img.onerror = ()=>setLoading(false);
+
+      img.src=el.src;
+      center.appendChild(img);
+      return;
     }
 
     const v=document.createElement("video");
     v.className="rg-main";
     v.src=el.src;
-    if(el.poster)v.poster=el.poster;
+    if(el.poster) v.poster=el.poster;
 
     v.autoplay=true;
     v.loop=true;
     v.controls=false;
     v.playsInline=true;
-    v.preload="auto";
 
+    // ✅ быстрее initial: metadata (а не auto)
+    v.preload="metadata";
+
+    v.setAttribute("playsinline","");
+    v.setAttribute("webkit-playsinline","");
     v.setAttribute("controlsList","nodownload noplaybackrate noremoteplayback");
     v.setAttribute("disablePictureInPicture","");
     v.setAttribute("disableRemotePlayback","");
 
+    const done = ()=>setLoading(false);
+    v.onplaying = done;
+    v.onloadeddata = done;
+    v.oncanplay = done;
+    v.onerror = done;
+
     center.appendChild(v);
     currentVideo=v;
+
     startVideo(v);
+
+    // ✅ попросим браузер подкачать чуть больше уже после вставки
+    idle(()=>{ try{ v.preload="auto"; v.load(); }catch(e){} });
   }
 
   async function show(i){
     const t=++token;
+
     if(i<0)i=elements.length-1;
     if(i>=elements.length)i=0;
     index=i;
+
     const prev=(i-1+elements.length)%elements.length;
     const next=(i+1)%elements.length;
-    await Promise.all([preloadElement(elements[i]),preloadElement(elements[prev]),preloadElement(elements[next])]);
+
+    setLoading(true);
+
+    // ✅ параллель: текущая (high), соседние (low)
+    await Promise.all([
+      preloadElement(elements[i], "high"),
+      preloadElement(elements[prev], "low"),
+      preloadElement(elements[next], "low")
+    ]);
     if(t!==token)return;
-    showCenter(elements[i]);
-    preloadElement(elements[(prev-1+elements.length)%elements.length]);
-    preloadElement(elements[(next+1)%elements.length]);
+
+    showCenterEl(elements[i]);
+
+    // ✅ второе кольцо — когда браузер свободен
+    idle(()=>{
+      preloadElement(elements[(prev-1+elements.length)%elements.length], "low");
+      preloadElement(elements[(next+1)%elements.length], "low");
+    });
   }
 
   prevBtn.onclick=()=>show(index-1);
@@ -149,7 +284,10 @@
 
   let startX=0;
   gallery.addEventListener("touchstart",e=>{startX=e.touches[0].clientX},{passive:true});
-  gallery.addEventListener("touchend",e=>{const d=e.changedTouches[0].clientX-startX;if(Math.abs(d)>40){d<0?show(index+1):show(index-1)}},{passive:true});
+  gallery.addEventListener("touchend",e=>{
+    const d=e.changedTouches[0].clientX-startX;
+    if(Math.abs(d)>40){ d<0?show(index+1):show(index-1) }
+  },{passive:true});
 
   show(0);
 })();
