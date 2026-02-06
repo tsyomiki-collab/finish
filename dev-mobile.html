@@ -1,6 +1,19 @@
+Ок — я прямо в твой rg-stage / rg-center вставила:
+	1.	лоадинг поверх белого экрана (mix-blend-mode:difference, шрифт SegoeUI, font-weight:300, размер 10)
+	2.	tap for sound (тот же шрифт/размер 10) — появляется только если звук заблокирован
+	3.	быстрее прогрузка: остаётся твой Cloudinary fetch + префетч соседей, и самое важное — не убиваем лоадер/кнопку при перерисовке центра (в этом обычно и причина “белого экрана со стрелками”).
+
+Ниже — весь код целиком (можно вставлять как есть):
+
 <div id="rg-gallery">
   <div id="rg-stage">
     <div id="rg-center">
+      <!-- LOADING поверх белого экрана -->
+      <span class="rg-loading is-on" aria-hidden="true">loading...</span>
+
+      <!-- TAP (только если звук заблокирован) -->
+      <button class="rg-tap rg-hidden" type="button">tap for sound</button>
+
       <div class="rg-nav">
         <button class="rg-btn rg-prev" type="button">⟨</button>
         <button class="rg-btn rg-next" type="button">⟩</button>
@@ -17,12 +30,92 @@
 <link rel="preconnect" href="https://res.cloudinary.com" crossorigin>
 
 <style>
+@font-face{
+  font-family:"SegoeUI";
+  src:
+    local("Segoe UI Light"),
+    url("https://c.s-microsoft.com/static/fonts/segoe-ui/west-european/light/latest.woff2") format("woff2"),
+    url("https://c.s-microsoft.com/static/fonts/segoe-ui/west-european/light/latest.woff") format("woff"),
+    url("https://c.s-microsoft.com/static/fonts/segoe-ui/west-european/light/latest.ttf") format("truetype");
+  font-weight:300;
+  font-style:normal;
+  font-display:swap;
+}
+
 #rg-gallery{position:fixed;inset:0;background:#fcfcfc;z-index:9999;overflow:hidden}
 #rg-stage{position:absolute;inset:0;top:-60px;display:flex;align-items:center;justify-content:center;pointer-events:none}
-#rg-center{width:74vw;max-width:430px;height:50vh;max-height:460px;display:flex;align-items:center;justify-content:center;position:relative;pointer-events:none}
-.rg-main{max-width:100%;max-height:100%;object-fit:contain;display:block;pointer-events:auto}
-.rg-nav{position:absolute;left:50%;bottom:-65px;transform:translateX(-50%);display:flex;gap:25px;pointer-events:auto}
-.rg-btn{font-size:1.6rem;background:none;border:none;color:#666;cursor:pointer;padding:4px 8px;user-select:none;-webkit-tap-highlight-color:transparent}
+
+/* ✅ те самые “больше” размеры (стрелки/отступы не трогаем) */
+#rg-center{
+  width:86vw;max-width:520px;
+  height:62vh;max-height:560px;
+  display:flex;align-items:center;justify-content:center;
+  position:relative;
+  pointer-events:none;
+}
+
+/* медиа */
+.rg-main{
+  max-width:100%;
+  max-height:100%;
+  width:auto;height:auto;
+  object-fit:contain;
+  display:block;
+  pointer-events:auto;
+}
+
+.rg-nav{
+  position:absolute;left:50%;bottom:-65px;transform:translateX(-50%);
+  display:flex;gap:25px;pointer-events:auto
+}
+.rg-btn{
+  font-size:1.6rem;background:none;border:none;color:#666;cursor:pointer;
+  padding:4px 8px;user-select:none;-webkit-tap-highlight-color:transparent
+}
+
+/* ✅ LOADING (mix blend, size 10, weight 300) */
+.rg-loading{
+  position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
+  font-family:"SegoeUI","Segoe UI",-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif;
+  font-weight:300;
+  font-size:10px;
+  line-height:16px;
+  letter-spacing:0.01em;
+  white-space:nowrap;
+
+  color:#fff;
+  mix-blend-mode:difference;
+  opacity:.9;
+
+  pointer-events:none;
+  user-select:none;
+  display:none;
+}
+.rg-loading.is-on{display:block}
+
+/* ✅ TAP (тот же шрифт/size 10) */
+.rg-tap{
+  position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
+  z-index:5;
+
+  font-family:"SegoeUI","Segoe UI",-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif;
+  font-weight:300;
+  font-size:10px;
+  line-height:16px;
+  letter-spacing:0.01em;
+  white-space:nowrap;
+  color:#000;
+
+  background:rgba(255,255,255,.92);
+  border:1px solid rgba(0,0,0,.14);
+  border-radius:999px;
+  padding:8px 12px;
+
+  cursor:pointer;
+  user-select:none;
+  -webkit-tap-highlight-color:transparent;
+}
+.rg-hidden{display:none}
 </style>
 
 <script>
@@ -33,19 +126,16 @@
 
   const CLOUD="dmtnse4sz";
   const DPR=Math.max(1, Math.min(3, window.devicePixelRatio||1));
-  const W_IMG=Math.min(1600, Math.ceil(430 * DPR * 1.6));   // под твой max-width:430
-  const W_POSTER=Math.min(1600, Math.ceil(430 * DPR * 1.2)); // постер можно чуть меньше
+  const W_IMG=Math.min(1800, Math.ceil(520 * DPR * 1.65));     // под max-width:520
+  const W_POSTER=Math.min(1600, Math.ceil(520 * DPR * 1.15));
 
   function cldFetchImg(url, w){
-    // eco быстрее и почти без потери визуально
     return `https://res.cloudinary.com/${CLOUD}/image/fetch/f_auto,q_auto:eco,fl_progressive,w_${w}/${encodeURIComponent(url)}`;
   }
 
   const VIDEO_POSTER_ORIG="https://raw.githubusercontent.com/tsyomiki-collab/devil2/main/Screenshot%202026-02-03%20at%2019.01.32.png";
   const VIDEO_POSTER=cldFetchImg(VIDEO_POSTER_ORIG, W_POSTER);
 
-  // ВАЖНО: github.com/.../raw медленнее и иногда редиректы.
-  // Но если тебе нужно оставить как есть — ок, мы всё равно через Cloudinary fetch сделаем быстрее.
   const elementsRaw=[
     {type:'img',src:"https://github.com/tsyomiki-collab/devil2/raw/main/photo_2025-09-17%2001.41.48-2.webp"},
     {type:'img',src:"https://github.com/tsyomiki-collab/devil2/raw/main/photo_2025-09-17%2001.50.23-2.webp"},
@@ -53,14 +143,18 @@
     {type:'img',src:"https://github.com/tsyomiki-collab/devil2/raw/main/photo_2025-09-17%2001.57.15-2.webp"},
     {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/devil1/main/DevilAngel_ElenasKasnatschejew_TianaLenz_Editorial_5.webp"},
     {type:'img',src:"https://github.com/tsyomiki-collab/devil2/raw/main/photo_2025-09-17%2001.59.22-2.webp"},
-    {type:'video',src:"https://res.cloudinary.com/dmtnse4sz/video/upload/v1769438095/Editorial_AngelundDevil_TokioHeavenAndHell43_pzzoaq.mp4",poster:VIDEO_POSTER},
+    {
+      type:'video',
+      src:"https://res.cloudinary.com/dmtnse4sz/video/upload/v1769438095/Editorial_AngelundDevil_TokioHeavenAndHell43_pzzoaq.mp4",
+      poster:VIDEO_POSTER
+    },
     {type:'img',src:"https://github.com/tsyomiki-collab/devil2/raw/main/photo_2025-09-17%2002.01.35-2.webp"},
     {type:'img',src:"https://github.com/tsyomiki-collab/devil2/raw/main/photo_2025-09-17%2002.03.31-2.webp"},
     {type:'img',src:"https://github.com/tsyomiki-collab/devil2/raw/main/photo_2025-09-17%2002.06.53-2.webp"},
     {type:'img',src:"https://github.com/tsyomiki-collab/devil2/raw/main/DevilAngel_ElenasKasnatschejew_TianaLenz_Editorial_10.webp"}
   ];
 
-  // Сжимаем/режем ВСЕ картинки через Cloudinary fetch (видео не трогаем)
+  // картинки режем/жмём через Cloudinary fetch
   const elements = elementsRaw.map(el=>{
     if(el.type==="img") return {...el, src: cldFetchImg(el.src, W_IMG)};
     return el;
@@ -71,17 +165,35 @@
   const prevBtn=gallery.querySelector(".rg-prev");
   const nextBtn=gallery.querySelector(".rg-next");
 
-  // КЭШ НОД (чтобы не создавать заново) + готовность
+  const loading = center.querySelector(".rg-loading");
+  const tapBtn  = center.querySelector(".rg-tap");
+  const nav     = center.querySelector(".rg-nav");
+
   const nodeCache=new Map();   // key -> node
   const readyCache=new Map();  // key -> Promise
   const ric = window.requestIdleCallback || ((cb)=>setTimeout(()=>cb({timeRemaining:()=>0}), 120));
 
+  function setLoading(on){ loading.classList.toggle("is-on", !!on); }
+  function setTap(on){ tapBtn.classList.toggle("rg-hidden", !on); }
+
   function keyOf(el){ return el.type==="video" ? ("v:"+el.src) : ("i:"+el.src); }
 
-  function clearCenter(){
-    const nav=center.querySelector(".rg-nav");
-    center.innerHTML="";
-    if(nav) center.appendChild(nav);
+  function clearCenterKeepUI(){
+    // не уничтожаем loading/tap/nav (иначе будет “белый экран со стрелками”)
+    const keepLoading = loading;
+    const keepTap = tapBtn;
+    const keepNav = nav;
+
+    center.innerHTML = "";
+    center.appendChild(keepLoading);
+    center.appendChild(keepTap);
+    center.appendChild(keepNav);
+
+    if(currentVideo){
+      try{ currentVideo.pause(); }catch(e){}
+      currentVideo = null;
+    }
+    setTap(false);
   }
 
   function ensureImg(src){
@@ -92,8 +204,8 @@
     img.className="rg-main";
     img.decoding="async";
     img.loading="eager";
-    img.src=src;
     try{ img.fetchPriority="high"; }catch(e){}
+    img.src=src;
 
     nodeCache.set(k,img);
     return img;
@@ -106,25 +218,21 @@
     const v=document.createElement("video");
     v.className="rg-main";
 
-    // атрибуты ДО src
     v.autoplay=true;
     v.loop=true;
     v.controls=false;
-
     v.playsInline=true;
     v.setAttribute("playsinline","");
     v.setAttribute("webkit-playsinline","");
 
-    // автоплей со звуком браузеры блокируют -> стартуем muted, звук после жеста
+    // стартуем muted (чтобы autoplay точно)
     v.muted=true;
     v.volume=0;
     v.setAttribute("muted","");
     v.setAttribute("autoplay","");
     v.setAttribute("loop","");
 
-    // важно: пока не показали — не тянем всё видео
-    v.preload="metadata";
-
+    v.preload="auto";
     v.setAttribute("controlsList","nodownload noplaybackrate noremoteplayback");
     v.setAttribute("disablePictureInPicture","");
     v.setAttribute("disableRemotePlayback","");
@@ -144,21 +252,19 @@
       if(el.type==="img"){
         const img=ensureImg(el.src);
         const done = async ()=>{
-          // decode может ждать долго на слабых — поэтому мы его не делаем блокирующим
           if(img.decode){
             try{ await img.decode(); }catch(e){}
           }
-          resolve();
+          resolve(true);
         };
         if(img.complete){ done(); return; }
-        img.onload=done;
-        img.onerror=done;
+        img.onload=done; img.onerror=done;
       } else {
-        // постер прогреем обязательно
+        // прогрев постера
         if(el.poster) ensureReady({type:"img", src: el.poster});
         const v=document.createElement("video");
         v.preload="metadata";
-        v.onloadedmetadata=v.onerror=()=>resolve();
+        v.onloadedmetadata=v.onerror=()=>resolve(true);
         v.src=el.src;
       }
     });
@@ -167,59 +273,92 @@
     return p;
   }
 
-  // НЕ ждём preload для показа: показываем сразу, а потом догружаем рядом
-  function showCenterInstant(el){
-    clearCenter();
-    if(currentVideo){ try{ currentVideo.pause(); }catch(e){} currentVideo=null; }
+  let audioUnlocked=false;
 
-    if(el.type==="img"){
-      center.appendChild(ensureImg(el.src));
-      return;
+  async function tryPlayWithSound(v){
+    try{
+      v.muted=false;
+      v.volume=1;
+      await v.play();
+      return true;
+    }catch(e){
+      return false;
     }
-
-    const v=ensureVideo(el);
-
-    // когда реально показываем видео — можно повысить preload
-    v.preload="auto";
-    try{ v.load(); }catch(e){}
-
-    center.appendChild(v);
-    currentVideo=v;
-    startVideo(v);
   }
 
-  // автоплей muted + разлочка звука по жесту
-  let audioUnlocked=false;
   function armAudioUnlock(){
     if(audioUnlocked) return;
+
     const unlock = async ()=>{
       audioUnlocked=true;
+      setTap(false);
       if(currentVideo){
-        currentVideo.muted=false;
-        currentVideo.volume=1;
-        try{ await currentVideo.play(); }catch(e){}
+        await tryPlayWithSound(currentVideo);
       }
     };
-    window.addEventListener("pointerdown", unlock, {once:true});
+
+    window.addEventListener("pointerdown", unlock, {once:true, passive:true});
     window.addEventListener("touchstart", unlock, {once:true, passive:true});
     window.addEventListener("keydown", unlock, {once:true});
   }
 
   async function startVideo(v){
-    // попробуем звук (иногда на десктопе разрешено)
+    // если уже разлочили — сразу со звуком
     if(audioUnlocked){
-      v.muted=false; v.volume=1;
-      try{ await v.play(); }catch(e){}
+      await tryPlayWithSound(v);
+      setTap(false);
       return;
     }
 
-    v.muted=false; v.volume=1;
-    try{ await v.play(); audioUnlocked=true; return; }catch(e){}
+    // пробуем со звуком (иногда разрешено)
+    if(await tryPlayWithSound(v)){
+      audioUnlocked=true;
+      setTap(false);
+      return;
+    }
 
-    // гарантированный вариант
-    v.muted=true; v.volume=0;
-    try{ await v.play(); }catch(e){}
+    // иначе запускаем muted и показываем tap
+    try{
+      v.muted=true;
+      v.volume=0;
+      await v.play();
+    }catch(e){}
+    setTap(true);
     armAudioUnlock();
+  }
+
+  function showCenter(el){
+    clearCenterKeepUI();
+    setLoading(true);
+    setTap(false);
+
+    if(el.type==="img"){
+      const img = ensureImg(el.src);
+
+      // если уже в кеше/готово — скрываем лоадер почти мгновенно
+      if(img.complete){
+        setLoading(false);
+      } else {
+        const done = ()=>setLoading(false);
+        img.addEventListener("load", done, {once:true});
+        img.addEventListener("error", done, {once:true});
+      }
+
+      center.insertBefore(img, nav);
+      return;
+    }
+
+    const v = ensureVideo(el);
+    currentVideo = v;
+
+    // лоадер убираем когда реально пошло
+    const done = ()=>setLoading(false);
+    v.addEventListener("playing", done, {once:true});
+    v.addEventListener("canplay", done, {once:true});
+    v.addEventListener("error", done, {once:true});
+
+    center.insertBefore(v, nav);
+    startVideo(v);
   }
 
   function preloadAround(i){
@@ -244,20 +383,35 @@
     if(i>=n)i=0;
     index=i;
 
-    // 1) показываем сразу (без await)
-    showCenterInstant(elements[i]);
+    // важно: лоадер включаем сразу, чтобы не было белого экрана
+    setLoading(true);
+    setTap(false);
 
-    // 2) догружаем рядом (фон)
+    // показать сразу
+    showCenter(elements[i]);
+
+    // прогрев вокруг
     preloadAround(i);
 
-    // 3) если кликнули быстро много раз — просто игнорируем старые фоновые задачи
-    // (t тут оставлен для совместимости)
     return t;
   }
+
+  tapBtn.addEventListener("click", async ()=>{
+    if(!currentVideo) return;
+    const ok = await tryPlayWithSound(currentVideo);
+    if(ok){
+      audioUnlocked=true;
+      setTap(false);
+    } else {
+      setTap(true);
+      armAudioUnlock();
+    }
+  });
 
   prevBtn.onclick=()=>show(index-1);
   nextBtn.onclick=()=>show(index+1);
 
+  // свайп
   let startX=0;
   gallery.addEventListener("touchstart",e=>{startX=e.touches[0].clientX},{passive:true});
   gallery.addEventListener("touchend",e=>{
@@ -265,7 +419,8 @@
     if(Math.abs(d)>40){ d<0?show(index+1):show(index-1) }
   },{passive:true});
 
-  // старт: сразу показываем 0, без ожиданий
   show(0);
 })();
 </script>
+
+Если хочешь ещё быстрее: я могу сделать, чтобы сначала грузился “постер/превью” (супер быстро), а уже потом подменялся на full-res — визуально вообще без белых экранов, но это чуть больше логики.
