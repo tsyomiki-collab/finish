@@ -1,13 +1,12 @@
 <div id="rg-gallery">
   <div id="rg-stage">
     <div id="rg-center">
-      <span class="rg-loading" aria-hidden="true">loading...</span>
+      <!-- LOADING поверх белого экрана -->
+      <span class="rg-loading is-on" aria-hidden="true">loading...</span>
 
-      <button class="rg-tap" type="button" aria-label="Tap to screen">
-        tap to screen
-      </button>
+      <!-- TAP (только если звук заблокирован) -->
+      <button class="rg-tap rg-hidden" type="button">tap for sound</button>
 
-      <!-- ✅ ВАЖНО: здесь было <уdiv ...> — исправлено на <div ...> -->
       <div class="rg-nav">
         <button class="rg-btn rg-prev" type="button">⟨</button>
         <button class="rg-btn rg-next" type="button">⟩</button>
@@ -18,6 +17,8 @@
 
 <link rel="dns-prefetch" href="//raw.githubusercontent.com">
 <link rel="preconnect" href="https://raw.githubusercontent.com" crossorigin>
+<link rel="dns-prefetch" href="//github.com">
+<link rel="preconnect" href="https://github.com" crossorigin>
 <link rel="dns-prefetch" href="//res.cloudinary.com">
 <link rel="preconnect" href="https://res.cloudinary.com" crossorigin>
 
@@ -37,85 +38,84 @@
 #rg-gallery{position:fixed;inset:0;background:#fcfcfc;z-index:9999;overflow:hidden}
 #rg-stage{position:absolute;inset:0;top:-60px;display:flex;align-items:center;justify-content:center;pointer-events:none}
 
-/* ✅ ТВОИ РАЗМЕРЫ */
+/* ✅ размеры как в твоём коде со стрелками */
 #rg-center{
-  width:92vw; max-width:560px;
-  height:64vh; max-height:640px;
+  width:86vw;max-width:520px;
+  height:62vh;max-height:560px;
   display:flex;align-items:center;justify-content:center;
   position:relative;
-  pointer-events:none;
+
+  /* ✅ ВАЖНО: чтобы стрелки реально работали */
+  pointer-events:auto;
+
   contain:layout paint size;
 }
 
+/* медиа */
 .rg-main{
   max-width:100%;
   max-height:100%;
+  width:auto;height:auto;
   object-fit:contain;
   display:block;
   pointer-events:auto;
 }
 
-/* ✅ навигация как ты указала */
 .rg-nav{
-  position:absolute;
-  left:50%;
-  bottom:-65px;
-  transform:translateX(-50%);
-  display:flex;
-  gap:25px;
-  pointer-events:auto;
+  position:absolute;left:50%;bottom:-65px;transform:translateX(-50%);
+  display:flex;gap:25px;pointer-events:auto;
+
+  /* ✅ чтобы не прятались под медиа */
+  z-index:10;
 }
 .rg-btn{
-  font-size:1.6rem;
-  background:none;
-  border:none;
-  color:#666;
-  cursor:pointer;
-  padding:4px 8px;
-  user-select:none;
-  -webkit-tap-highlight-color:transparent
+  font-size:1.6rem;background:none;border:none;color:#666;cursor:pointer;
+  padding:4px 8px;user-select:none;-webkit-tap-highlight-color:transparent
 }
 
-/* ✅ LOADING: mix-blend + 10px + weight 300 */
+/* ✅ LOADING */
 .rg-loading{
   position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
   font-family:"SegoeUI","Segoe UI",-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif;
   font-weight:300;
   font-size:10px;
-  letter-spacing:.01em;
   line-height:16px;
+  letter-spacing:0.01em;
+  white-space:nowrap;
+
   color:#fff;
   mix-blend-mode:difference;
   opacity:.9;
+
   pointer-events:none;
   user-select:none;
   display:none;
 }
-#rg-center.is-loading .rg-loading{display:block}
+.rg-loading.is-on{display:block}
 
-/* ✅ TAP: тот же шрифт и size 10 */
+/* ✅ TAP */
 .rg-tap{
   position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
-  z-index:5;
-  display:none;
-  pointer-events:auto;
-  cursor:pointer;
+  z-index:11;
 
   font-family:"SegoeUI","Segoe UI",-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif;
   font-weight:300;
   font-size:10px;
-  letter-spacing:.01em;
   line-height:16px;
+  letter-spacing:0.01em;
   white-space:nowrap;
   color:#000;
 
-  padding:6px 10px;
-  background:rgba(255,255,255,.95);
+  background:rgba(255,255,255,.92);
   border:1px solid rgba(0,0,0,.14);
   border-radius:999px;
+  padding:8px 12px;
+
+  cursor:pointer;
+  user-select:none;
   -webkit-tap-highlight-color:transparent;
 }
-#rg-center.needs-tap .rg-tap{display:block}
+.rg-hidden{display:none}
 </style>
 
 <script>
@@ -124,72 +124,102 @@
   if(!gallery||gallery.dataset.rgInit==="1")return;
   gallery.dataset.rgInit="1";
 
-  const original=[
-    "https://raw.githubusercontent.com/tsyomiki-collab/solitude/main/1.jpeg",
-    "https://raw.githubusercontent.com/tsyomiki-collab/solitude/main/2.jpeg",
-    "https://raw.githubusercontent.com/tsyomiki-collab/solitude/main/3.jpeg",
-    "https://raw.githubusercontent.com/tsyomiki-collab/solitude/main/4.jpeg",
-    "https://raw.githubusercontent.com/tsyomiki-collab/solitude/main/5.jpeg",
-    "https://raw.githubusercontent.com/tsyomiki-collab/solitude/main/6.jpeg",
-    "https://raw.githubusercontent.com/tsyomiki-collab/solitude/main/7.jpg",
-    "https://raw.githubusercontent.com/tsyomiki-collab/solitude/main/8.jpg",
-    "https://raw.githubusercontent.com/tsyomiki-collab/solitude/main/9.jpg",
-    "https://raw.githubusercontent.com/tsyomiki-collab/solitude/main/10.jpg",
-    "https://raw.githubusercontent.com/tsyomiki-collab/solitude/main/11.jpg",
-    "https://raw.githubusercontent.com/tsyomiki-collab/solitude/main/12.jpg"
+  const CLOUD="dmtnse4sz";
+  const DPR=Math.max(1, Math.min(3, window.devicePixelRatio||1));
+  const W_IMG=Math.min(1800, Math.ceil(520 * DPR * 1.65));
+  const W_POSTER=Math.min(1600, Math.ceil(520 * DPR * 1.15));
+
+  function cldFetchImg(url, w){
+    return `https://res.cloudinary.com/${CLOUD}/image/fetch/f_auto,q_auto:eco,fl_progressive,w_${w}/${encodeURIComponent(url)}`;
+  }
+
+  const VIDEO_POSTER_ORIG="https://raw.githubusercontent.com/tsyomiki-collab/devil2/main/Screenshot%202026-02-03%20at%2019.01.32.png";
+  const VIDEO_POSTER=cldFetchImg(VIDEO_POSTER_ORIG, W_POSTER);
+
+  const elementsRaw=[
+    {type:'img',src:"https://github.com/tsyomiki-collab/devil2/raw/main/photo_2025-09-17%2001.41.48-2.webp"},
+    {type:'img',src:"https://github.com/tsyomiki-collab/devil2/raw/main/photo_2025-09-17%2001.50.23-2.webp"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/devil1/main/DevilAngel_ElenasKasnatschejew_TianaLenz_Editorial_3.webp"},
+    {type:'img',src:"https://github.com/tsyomiki-collab/devil2/raw/main/photo_2025-09-17%2001.57.15-2.webp"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/devil1/main/DevilAngel_ElenasKasnatschejew_TianaLenz_Editorial_5.webp"},
+    {type:'img',src:"https://github.com/tsyomiki-collab/devil2/raw/main/photo_2025-09-17%2001.59.22-2.webp"},
+    {type:'video',src:"https://res.cloudinary.com/dmtnse4sz/video/upload/v1769438095/Editorial_AngelundDevil_TokioHeavenAndHell43_pzzoaq.mp4",poster:VIDEO_POSTER},
+    {type:'img',src:"https://github.com/tsyomiki-collab/devil2/raw/main/photo_2025-09-17%2002.01.35-2.webp"},
+    {type:'img',src:"https://github.com/tsyomiki-collab/devil2/raw/main/photo_2025-09-17%2002.03.31-2.webp"},
+    {type:'img',src:"https://github.com/tsyomiki-collab/devil2/raw/main/photo_2025-09-17%2002.06.53-2.webp"},
+    {type:'img',src:"https://github.com/tsyomiki-collab/devil2/raw/main/DevilAngel_ElenasKasnatschejew_TianaLenz_Editorial_10.webp"}
   ];
+
+  const elements = elementsRaw.map(el=>{
+    if(el.type==="img") return {...el, src: cldFetchImg(el.src, W_IMG)};
+    return el;
+  });
 
   const center=document.getElementById("rg-center");
   const prevBtn=gallery.querySelector(".rg-prev");
   const nextBtn=gallery.querySelector(".rg-next");
-  const tapBtn=center.querySelector(".rg-tap");
 
-  function setLoading(on){ center.classList.toggle("is-loading", !!on); }
-  function setNeedsTap(on){ center.classList.toggle("needs-tap", !!on); }
+  const loading = center.querySelector(".rg-loading");
+  const tapBtn  = center.querySelector(".rg-tap");
+  const nav     = center.querySelector(".rg-nav");
 
-  // ⚡️ Cloudinary fetch — под ТВОИ размеры центра
-  const CLOUD="dmtnse4sz";
-  const DPR=Math.max(1, Math.min(3, window.devicePixelRatio||1));
-  const centerPx = Math.min(560, Math.round(window.innerWidth * 0.92));
-  const TARGET_W = Math.min(2000, Math.ceil(centerPx * DPR * 1.25));
+  function setLoading(on){ loading.classList.toggle("is-on", !!on); }
+  function setTap(on){ tapBtn.classList.toggle("rg-hidden", !on); }
 
-  function cldFetch(url){
-    return `https://res.cloudinary.com/${CLOUD}/image/fetch/f_auto,q_auto:eco,fl_progressive,fl_lossy,w_${TARGET_W}/${encodeURIComponent(url)}`;
+  // чистим только медиа, UI не трогаем
+  function removeMedia(){
+    const old = center.querySelector(".rg-main");
+    if(old){
+      if(old.tagName==="VIDEO"){ try{ old.pause(); }catch(e){} }
+      old.remove();
+    }
   }
 
-  const elements = original.map(u => ({ type:"img", src: cldFetch(u) }));
-
-  let index=0, token=0, currentVideo=null;
-
-  const nodeCache=new Map();   // key -> node
-  const readyCache=new Map();  // key -> Promise
+  const nodeCache=new Map();
+  const readyCache=new Map();
   const ric = window.requestIdleCallback || ((cb)=>setTimeout(()=>cb({timeRemaining:()=>0}), 120));
-
   function keyOf(el){ return el.type==="video" ? ("v:"+el.src) : ("i:"+el.src); }
 
-  function clearCenterKeepUI(){
-    const nav = center.querySelector(".rg-nav");
-    const loading = center.querySelector(".rg-loading");
-    const tap = center.querySelector(".rg-tap");
-    center.innerHTML="";
-    if(loading) center.appendChild(loading);
-    if(tap) center.appendChild(tap);
-    if(nav) center.appendChild(nav);
-  }
-
-  function ensureImg(src, isCurrent){
+  function ensureImg(src){
     const k="i:"+src;
     if(nodeCache.has(k)) return nodeCache.get(k);
-
     const img=new Image();
     img.className="rg-main";
     img.decoding="async";
     img.loading="eager";
+    try{ img.fetchPriority="high"; }catch(e){}
     img.src=src;
-
-    try{ img.fetchPriority = isCurrent ? "high" : "low"; }catch(e){}
     nodeCache.set(k,img);
     return img;
+  }
+
+  function ensureVideo(el){
+    const k="v:"+el.src;
+    if(nodeCache.has(k)) return nodeCache.get(k);
+
+    const v=document.createElement("video");
+    v.className="rg-main";
+    v.autoplay=true; v.loop=true; v.controls=false;
+
+    v.playsInline=true;
+    v.setAttribute("playsinline","");
+    v.setAttribute("webkit-playsinline","");
+
+    v.muted=true; v.volume=0;
+    v.setAttribute("muted","");
+    v.setAttribute("autoplay","");
+    v.setAttribute("loop","");
+
+    v.preload="auto";
+    v.setAttribute("controlsList","nodownload noplaybackrate noremoteplayback");
+    v.setAttribute("disablePictureInPicture","");
+    v.setAttribute("disableRemotePlayback","");
+
+    if(el.poster) v.poster=el.poster;
+    v.src=el.src;
+
+    nodeCache.set(k,v);
+    return v;
   }
 
   function ensureReady(el){
@@ -197,32 +227,84 @@
     if(readyCache.has(k)) return readyCache.get(k);
 
     const p = new Promise((resolve)=>{
-      const img=ensureImg(el.src, false);
-      const done = async ()=>{
-        if(img.decode){
-          try{ await img.decode(); }catch(e){}
-        }
-        resolve();
-      };
-      if(img.complete){ done(); return; }
-      img.onload=done;
-      img.onerror=done;
+      if(el.type==="img"){
+        const img=ensureImg(el.src);
+        const done = async ()=>{
+          if(img.decode){ try{ await img.decode(); }catch(e){} }
+          resolve();
+        };
+        if(img.complete){ done(); return; }
+        img.onload=done; img.onerror=done;
+      } else {
+        if(el.poster) ensureReady({type:"img", src: el.poster});
+        const v=document.createElement("video");
+        v.preload="metadata";
+        v.onloadedmetadata=v.onerror=()=>resolve();
+        v.src=el.src;
+      }
     });
 
     readyCache.set(k,p);
     return p;
   }
 
-  // ---- TAP/звук (оставлено, если потом добавишь видео) ----
-  let soundUnlocked=false;
+  let index=0;
+  let audioUnlocked=false;
+  let currentVideo=null;
 
-  async function unlockSoundNow(){
-    soundUnlocked=true;
-    setNeedsTap(false);
-    if(!currentVideo) return;
-    currentVideo.muted=false;
-    currentVideo.volume=1;
-    try{ await currentVideo.play(); }catch(e){}
+  async function tryPlayWithSound(v){
+    try{ v.muted=false; v.volume=1; await v.play(); return true; }catch(e){ return false; }
+  }
+
+  async function startVideo(v){
+    setTap(false);
+
+    if(audioUnlocked){
+      if(await tryPlayWithSound(v)) return;
+    } else {
+      if(await tryPlayWithSound(v)){ audioUnlocked=true; return; }
+    }
+
+    try{ v.muted=true; v.volume=0; await v.play(); }catch(e){}
+    setTap(true);
+
+    // разлочим звук на первом жесте
+    const unlock = async ()=>{
+      audioUnlocked=true;
+      setTap(false);
+      if(currentVideo) await tryPlayWithSound(currentVideo);
+    };
+    window.addEventListener("pointerdown", unlock, {once:true, passive:true});
+    window.addEventListener("touchstart", unlock, {once:true, passive:true});
+    window.addEventListener("keydown", unlock, {once:true});
+  }
+
+  async function mount(el){
+    removeMedia();
+    setLoading(true);
+    setTap(false);
+
+    if(el.type==="img"){
+      const img=ensureImg(el.src);
+      const done=()=>setLoading(false);
+      if(img.complete) done();
+      else { img.addEventListener("load", done, {once:true}); img.addEventListener("error", done, {once:true}); }
+
+      // вставляем перед nav чтобы стрелки всегда сверху
+      center.insertBefore(img, nav);
+      return;
+    }
+
+    const v=ensureVideo(el);
+    currentVideo=v;
+
+    const done=()=>setLoading(false);
+    v.addEventListener("playing", done, {once:true});
+    v.addEventListener("canplay", done, {once:true});
+    v.addEventListener("error", done, {once:true});
+
+    center.insertBefore(v, nav);
+    startVideo(v);
   }
 
   function preloadAround(i){
@@ -240,40 +322,26 @@
     });
   }
 
-  async function mount(el){
-    clearCenterKeepUI();
-    setLoading(true);
-
-    const img=ensureImg(el.src, true);
-    const finish=()=>setLoading(false);
-    if(img.complete) finish();
-    else { img.onload=finish; img.onerror=finish; }
-
-    const nav=center.querySelector(".rg-nav");
-    center.insertBefore(img, nav || null);
-  }
-
-  async function show(i){
-    const t=++token;
+  function show(i){
     const n=elements.length;
-
     if(i<0)i=n-1;
     if(i>=n)i=0;
     index=i;
 
     setLoading(true);
     preloadAround(i);
-
-    await ensureReady(elements[i]);
-    if(t!==token) return;
-
     mount(elements[i]);
   }
+
+  tapBtn.addEventListener("click", async ()=>{
+    if(!currentVideo) return;
+    const ok = await tryPlayWithSound(currentVideo);
+    if(ok){ audioUnlocked=true; setTap(false); }
+  });
 
   prevBtn.onclick=()=>show(index-1);
   nextBtn.onclick=()=>show(index+1);
 
-  // swipe
   let startX=0;
   gallery.addEventListener("touchstart",e=>{startX=e.touches[0].clientX},{passive:true});
   gallery.addEventListener("touchend",e=>{
@@ -281,9 +349,6 @@
     if(Math.abs(d)>40){ d<0?show(index+1):show(index-1); }
   },{passive:true});
 
-  tapBtn.addEventListener("click",(e)=>{ e.preventDefault(); unlockSoundNow(); });
-
-  preloadAround(0);
   show(0);
 })();
 </script>
