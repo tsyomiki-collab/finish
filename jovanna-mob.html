@@ -1,7 +1,7 @@
 <div id="rg-gallery">
   <div id="rg-stage">
     <div id="rg-center">
-      <!-- LOADING (mix-blend) -->
+      <!-- ✅ LOADING поверх центра -->
       <span class="rg-loading is-on" aria-hidden="true">loading...</span>
 
       <div class="rg-nav">
@@ -12,7 +12,7 @@
   </div>
 </div>
 
-<!-- прогрев соединений -->
+<!-- прогрев соединений (из 2-го кода) -->
 <link rel="dns-prefetch" href="//raw.githubusercontent.com">
 <link rel="preconnect" href="https://raw.githubusercontent.com" crossorigin>
 <link rel="dns-prefetch" href="//res.cloudinary.com">
@@ -34,13 +34,12 @@
 #rg-gallery{position:fixed;inset:0;background:#fcfcfc;z-index:9999;overflow:hidden}
 #rg-stage{position:absolute;inset:0;top:-60px;display:flex;align-items:center;justify-content:center;pointer-events:none}
 
-/* ✅ больше картинки, но отступы навигации/стрелок те же */
+/* визуал/пропорции из 1-го кода */
 #rg-center{
   width:86vw;max-width:520px;
   height:62vh;max-height:560px;
   display:flex;align-items:center;justify-content:center;
   position:relative;pointer-events:none;
-  contain:layout paint size;
 }
 
 .rg-main{max-width:100%;max-height:100%;object-fit:contain;display:block;pointer-events:auto}
@@ -48,18 +47,22 @@
 .rg-nav{position:absolute;left:50%;bottom:-65px;transform:translateX(-50%);display:flex;gap:25px;pointer-events:auto}
 .rg-btn{font-size:1.6rem;background:none;border:none;color:#666;cursor:pointer;padding:4px 8px;user-select:none;-webkit-tap-highlight-color:transparent}
 
-/* ✅ LOADING: SegoeUI 300, size 10, mix-blend */
+/* LOADING — как в 1-м коде */
 .rg-loading{
-  position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
+  position:absolute;
+  left:50%; top:50%;
+  transform:translate(-50%,-50%);
   font-family:"SegoeUI","Segoe UI",-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif;
   font-weight:300;
   font-size:10px;
   line-height:16px;
   letter-spacing:0.01em;
   white-space:nowrap;
+
   color:#fff;
   mix-blend-mode:difference;
   opacity:.9;
+
   pointer-events:none;
   user-select:none;
   display:none;
@@ -73,7 +76,9 @@
   if(!gallery||gallery.dataset.rgInit==="1")return;
   gallery.dataset.rgInit="1";
 
-  // ---------- материалы (jovan-s) ----------
+  // =========================
+  // МАТЕРИАЛЫ (из 2-го кода)
+  // =========================
   const originals=[
     "https://raw.githubusercontent.com/tsyomiki-collab/jovan-s/main/1.png",
     "https://raw.githubusercontent.com/tsyomiki-collab/jovan-s/main/2.png",
@@ -92,7 +97,7 @@
     "https://raw.githubusercontent.com/tsyomiki-collab/jovan-s/main/15.png"
   ];
 
-  // ---------- ускорение: Cloudinary fetch под размер центра ----------
+  // Cloudinary fetch под размер центра (из 2-го кода)
   const CLOUD="dmtnse4sz";
   const DPR=Math.max(1, Math.min(3, window.devicePixelRatio||1));
   const centerCSSMax=520;
@@ -100,57 +105,57 @@
   const W=Math.min(2000, Math.ceil(centerPx*DPR*1.6));
 
   function cldFetch(url){
-    // eco = быстрее; если хочешь чуть лучше — поменяй на q_auto:good
     return `https://res.cloudinary.com/${CLOUD}/image/fetch/f_auto,q_auto:eco,fl_progressive,fl_lossy,w_${W}/${encodeURIComponent(url)}`;
   }
 
+  // elements = материалы со 2-го кода
   const elements = originals.map(u=>({type:"img", src: cldFetch(u)}));
 
-  // ---------- DOM ----------
+  // =========================
+  // ВИЗУАЛ + ФУНКЦИОНАЛ (из 1-го кода)
+  // =========================
+  let index=0, token=0;
+
   const center=document.getElementById("rg-center");
   const prevBtn=gallery.querySelector(".rg-prev");
   const nextBtn=gallery.querySelector(".rg-next");
-  const loading = center.querySelector(".rg-loading");
-  const nav = center.querySelector(".rg-nav");
+  const nav=center.querySelector(".rg-nav");
+  const loadingEl=center.querySelector(".rg-loading");
 
-  // ---------- cache ----------
-  const nodeCache = new Map();   // src -> <img>
-  const readyCache = new Map();  // src -> Promise
+  // кэш нод и “готовности”
+  const nodeCache=new Map();   // src -> <img>
+  const readyCache=new Map();  // src -> Promise
   const ric = window.requestIdleCallback || ((cb)=>setTimeout(()=>cb({timeRemaining:()=>0}), 120));
 
-  let index=0, token=0;
-
-  const setLoading=(on)=>loading.classList.toggle("is-on", !!on);
+  function setLoading(on){ loadingEl.classList.toggle("is-on", !!on); }
 
   function clearCenterKeepUI(){
     center.innerHTML="";
-    center.appendChild(loading);
+    center.appendChild(loadingEl);
     center.appendChild(nav);
   }
 
   function ensureImg(src){
     if(nodeCache.has(src)) return nodeCache.get(src);
 
-    const img = new Image();
+    const img=new Image();
     img.className="rg-main";
     img.decoding="async";
     img.loading="eager";
     img.src=src;
 
-    nodeCache.set(src, img);
+    nodeCache.set(src,img);
     return img;
   }
 
-  function setPriority(img, priority){
-    try{ img.fetchPriority = priority; }catch(e){}
-  }
-
-  // ✅ load + decode (чтобы не белый экран и меньше “мигания”)
-  function ensureReady(src){
+  // preload + decode (чтобы не “белый экран”)
+  function ensureReady(src, priority){
     if(readyCache.has(src)) return readyCache.get(src);
 
-    const img = ensureImg(src);
-    const p = new Promise((resolve)=>{
+    const img=ensureImg(src);
+    try{ img.fetchPriority = priority || "low"; }catch(e){}
+
+    const p=new Promise(async (resolve)=>{
       const done = async ()=>{
         if(img.decode){
           try{ await img.decode(); }catch(e){}
@@ -158,40 +163,30 @@
         resolve(true);
       };
 
-      if(img.complete){ done(); return; }
-      img.onload = done;
-      img.onerror = done;
+      if(img.complete){ await done(); return; }
+      img.onload=done;
+      img.onerror=done;
     });
 
-    readyCache.set(src, p);
+    readyCache.set(src,p);
     return p;
-  }
-
-  function mountImg(src){
-    clearCenterKeepUI();
-    center.insertBefore(ensureImg(src), nav);
   }
 
   function preloadAround(i){
     const n=elements.length;
-    const prev=(i-1+n)%n;
-    const next=(i+1)%n;
+    const idx=(k)=> (k+n)%n;
 
-    const curSrc  = elements[i].src;
-    const prevSrc = elements[prev].src;
-    const nextSrc = elements[next].src;
+    const cur = elements[idx(i)].src;
+    const prev = elements[idx(i-1)].src;
+    const next = elements[idx(i+1)].src;
 
-    setPriority(ensureImg(curSrc), "high");
-    setPriority(ensureImg(prevSrc), "low");
-    setPriority(ensureImg(nextSrc), "low");
-
-    ensureReady(curSrc);
-    ensureReady(prevSrc);
-    ensureReady(nextSrc);
+    ensureReady(cur, "high");
+    ensureReady(prev, "low");
+    ensureReady(next, "low");
 
     ric(()=>{
-      ensureReady(elements[(prev-1+n)%n].src);
-      ensureReady(elements[(next+1)%n].src);
+      ensureReady(elements[idx(i-2)].src, "low");
+      ensureReady(elements[idx(i+2)].src, "low");
     });
   }
 
@@ -205,11 +200,12 @@
     setLoading(true);
     preloadAround(i);
 
-    const src=elements[i].src;
-    await ensureReady(src);
+    const src = elements[i].src;
+    await ensureReady(src, "high");
     if(t!==token) return;
 
-    mountImg(src);
+    clearCenterKeepUI();
+    center.insertBefore(ensureImg(src), nav);
     setLoading(false);
   }
 
@@ -220,7 +216,7 @@
   gallery.addEventListener("touchstart",e=>{startX=e.touches[0].clientX},{passive:true});
   gallery.addEventListener("touchend",e=>{
     const d=e.changedTouches[0].clientX-startX;
-    if(Math.abs(d)>40){ d<0?show(index+1):show(index-1); }
+    if(Math.abs(d)>40){ d<0?show(index+1):show(index-1) }
   },{passive:true});
 
   // старт
