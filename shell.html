@@ -3,12 +3,16 @@
 
   <div class="rg-wrapper">
     <div class="rg-sideSlot">
+      <span class="rg-loading" aria-hidden="true">loading...</span>
       <img id="rg-left" class="rg-side" alt="">
     </div>
 
-    <div id="rg-center" class="rg-centerSlot"></div>
+    <div id="rg-center" class="rg-centerSlot">
+      <span class="rg-loading is-on" aria-hidden="true">loading...</span>
+    </div>
 
     <div class="rg-sideSlot">
+      <span class="rg-loading" aria-hidden="true">loading...</span>
       <img id="rg-right" class="rg-side" alt="">
     </div>
   </div>
@@ -17,6 +21,18 @@
 </div>
 
 <style>
+@font-face{
+  font-family:"SegoeUI";
+  src:
+    local("Segoe UI Light"),
+    url("https://c.s-microsoft.com/static/fonts/segoe-ui/west-european/light/latest.woff2") format("woff2"),
+    url("https://c.s-microsoft.com/static/fonts/segoe-ui/west-european/light/latest.woff") format("woff"),
+    url("https://c.s-microsoft.com/static/fonts/segoe-ui/west-european/light/latest.ttf") format("truetype");
+  font-weight:300;
+  font-style:normal;
+  font-display:swap;
+}
+
 #rg-gallery{
   position:fixed;
   inset:0;
@@ -38,6 +54,7 @@
 }
 
 .rg-sideSlot{
+  position:relative; /* ✅ for loading */
   width:360px;
   height:330px;
   display:flex;
@@ -49,6 +66,7 @@
 }
 
 .rg-centerSlot{
+  position:relative; /* ✅ for loading */
   width:min(1180px, 70vw);
   height:735px;
   display:flex;
@@ -73,6 +91,33 @@
   transform:scale(.68);
   transform-origin:center center;
 }
+
+/* loading... (mix-blend) */
+.rg-loading{
+  position:absolute;
+  left:50%;
+  top:50%;
+  transform:translate(-50%,-50%);
+
+  font-family:"SegoeUI","Segoe UI",-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif;
+  font-weight:300;
+  font-size:14px;  /* подобрала */
+  letter-spacing:.01em;
+  line-height:16px;
+
+  color:#fff;
+  mix-blend-mode:difference;
+  opacity:.9;
+
+  pointer-events:none;
+  user-select:none;
+  display:none;
+}
+.rg-loading.is-on{ display:block; }
+
+/* пока грузится — прячем изображение */
+.rg-side.is-loading,
+.rg-main.is-loading{ opacity:0; }
 
 .rg-btn{
   position:fixed;
@@ -119,20 +164,19 @@
   if(!gallery || gallery.dataset.rgInit === "1") return;
   gallery.dataset.rgInit = "1";
 
-  /* горизонтальные: 1, 2, 7, 10, 12 */
   const elements=[
-    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/shell/main/1.jpg",  wide:true},  // 1
-    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/shell/main/4.jpg",  wide:true},  // 2
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/shell/main/1.jpg",  wide:true},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/shell/main/4.jpg",  wide:true},
     {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/shell/main/2.jpg"},
     {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/shell/main/3.jpg"},
     {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/shell/main/5.jpg"},
     {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/shell/main/7.jpg"},
-    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/shell/main/6.jpg",  wide:true},  // 7
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/shell/main/6.jpg",  wide:true},
     {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/shell/main/8.jpg"},
     {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/shell/main/10.jpg"},
-    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/shell/main/9.jpg",  wide:true},  // 10
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/shell/main/9.jpg",  wide:true},
     {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/shell/main/11.png"},
-    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/shell/main/12.jpg", wide:true},  // 12
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/shell/main/12.jpg", wide:true},
     {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/shell/main/13.jpeg"},
     {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/shell/main/14.jpeg"},
     {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/shell/main/15.jpeg"},
@@ -141,9 +185,9 @@
 
   let index = 0, token = 0;
 
-  const left   = document.getElementById("rg-left");
-  const right  = document.getElementById("rg-right");
-  const center = document.getElementById("rg-center");
+  const left    = document.getElementById("rg-left");
+  const right   = document.getElementById("rg-right");
+  const center  = document.getElementById("rg-center");
   const prevBtn = gallery.querySelector(".rg-prev");
   const nextBtn = gallery.querySelector(".rg-next");
   if(!left || !right || !center || !prevBtn || !nextBtn) return;
@@ -151,13 +195,13 @@
   const preloadCache = new Map();
 
   function preload(src){
-    if(!src) return Promise.resolve();
+    if(!src) return Promise.resolve(false);
     if(preloadCache.has(src)) return preloadCache.get(src);
 
     const p = new Promise(resolve=>{
       const img = new Image();
       img.decoding = "async";
-      img.onload = () => resolve(true);
+      img.onload  = () => resolve(true);
       img.onerror = () => resolve(false);
       img.src = src;
     });
@@ -166,15 +210,9 @@
     return p;
   }
 
-  function showCenter(el){
-    center.innerHTML = "";
-    const img = document.createElement("img");
-    img.className = "rg-main";
-    img.decoding = "async";
-    img.loading = "eager";
-    img.fetchPriority = "high";
-    img.src = el.src;
-    center.appendChild(img);
+  function setLoading(slotEl, on){
+    const l = slotEl.querySelector(".rg-loading");
+    if(l) l.classList.toggle("is-on", !!on);
   }
 
   function setSidesHidden(h){
@@ -183,7 +221,40 @@
   }
 
   function markSide(imgEl, item){
-    imgEl.classList.toggle("rg-wide", !!item.wide);
+    imgEl.classList.toggle("rg-wide", !!(item && item.wide));
+  }
+
+  function setSide(imgEl, item){
+    const slot = imgEl.parentElement;
+    setLoading(slot, true);
+
+    imgEl.classList.add("is-loading");
+    imgEl.decoding = "async";
+    imgEl.loading = "eager";
+    imgEl.fetchPriority = "low";
+
+    imgEl.onload = ()=>{ imgEl.classList.remove("is-loading"); setLoading(slot,false); };
+    imgEl.onerror= ()=>{ imgEl.classList.remove("is-loading"); setLoading(slot,false); };
+
+    imgEl.src = item?.src || "";
+    markSide(imgEl, item);
+  }
+
+  function showCenter(item){
+    setLoading(center, true);
+    center.innerHTML = '<span class="rg-loading is-on" aria-hidden="true">loading...</span>';
+
+    const img = document.createElement("img");
+    img.className = "rg-main is-loading";
+    img.decoding = "async";
+    img.loading = "eager";
+    img.fetchPriority = "high";
+
+    img.onload = ()=>{ img.classList.remove("is-loading"); setLoading(center,false); };
+    img.onerror= ()=>{ img.classList.remove("is-loading"); setLoading(center,false); };
+
+    img.src = item.src;
+    center.appendChild(img);
   }
 
   async function show(i){
@@ -196,6 +267,11 @@
     const p = (i - 1 + elements.length) % elements.length;
     const n = (i + 1) % elements.length;
 
+    // loading сразу
+    setLoading(left.parentElement, true);
+    setLoading(right.parentElement, true);
+    setLoading(center, true);
+
     await Promise.all([
       preload(elements[i].src),
       preload(elements[p].src),
@@ -203,19 +279,22 @@
     ]);
     if(t !== token) return;
 
-    left.src  = elements[p].src;
-    right.src = elements[n].src;
-
-    markSide(left, elements[p]);
-    markSide(right, elements[n]);
-
+    setSide(left,  elements[p]);
+    setSide(right, elements[n]);
     showCenter(elements[i]);
 
-    /* правило: если ЦЕНТРАЛЬНАЯ wide:true — скрываем боковые */
+    // правило: если ЦЕНТРАЛЬНАЯ wide:true — скрываем боковые
     setSidesHidden(!!elements[i].wide);
 
-    preload(elements[(p - 1 + elements.length) % elements.length].src);
-    preload(elements[(n + 1) % elements.length].src);
+    // второе кольцо — в фоне
+    const p2 = (p - 1 + elements.length) % elements.length;
+    const n2 = (n + 1) % elements.length;
+    const bg = ()=>{
+      preload(elements[p2].src);
+      preload(elements[n2].src);
+    };
+    if("requestIdleCallback" in window) requestIdleCallback(bg, {timeout:600});
+    else setTimeout(bg, 0);
   }
 
   prevBtn.addEventListener("click", ()=>show(index - 1));
@@ -224,3 +303,4 @@
   show(0);
 })();
 </script>
+
