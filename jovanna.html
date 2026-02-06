@@ -110,19 +110,22 @@
 
 .rg-centerSlot, .rg-sideSlot { contain: layout paint size; }
 
-/* loader */
+/* loader (✅ с mix-blend-mode) */
 .rg-loading{
   position:absolute;
   left:50%;
   top:50%;
   transform:translate(-50%,-50%);
   font-family:"SegoeUI","Segoe UI",-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif;
-  font-weight:600;
+  font-weight:300;
   font-size:13px;
   letter-spacing:.01em;
   line-height:16px;
-  color:#000;
-  opacity:.55;
+
+  color:#fff;
+  mix-blend-mode:difference;
+  opacity:.9;
+
   pointer-events:none;
   user-select:none;
   display:none;
@@ -258,24 +261,39 @@
     const prev=(i-1+elements.length)%elements.length;
     const next=(i+1)%elements.length;
 
-    await Promise.all([
-      preload(elements[i].src),
-      preload(elements[prev].src),
-      preload(elements[next].src)
-    ]);
-
-    if(t!==token) return;
-
-    setSide(left, elements[prev].src);
-    setSide(right, elements[next].src);
-    showCenter(elements[i]);
-
-    preload(elements[(prev-1+elements.length)%elements.length].src);
-    preload(elements[(next+1)%elements.length].src);
-
+    // ✅ сначала вычисляем wide и прячем боковые ДО того, как включатся их лоадеры
     const hideSides = await getIsWide(elements[i].src);
     if(t!==token) return;
     gallery.classList.toggle("rg-wide", hideSides);
+
+    // если боковые скрыты — не включаем им loading вообще
+    setLoading(center, true);
+    if(!hideSides){
+      setLoading(left.parentElement, true);
+      setLoading(right.parentElement, true);
+    }else{
+      setLoading(left.parentElement, false);
+      setLoading(right.parentElement, false);
+    }
+
+    // ✅ прелоадим текущую; боковые — только если они реально будут видны
+    const tasks = [preload(elements[i].src)];
+    if(!hideSides){
+      tasks.push(preload(elements[prev].src), preload(elements[next].src));
+    }
+
+    await Promise.all(tasks);
+    if(t!==token) return;
+
+    if(!hideSides){
+      setSide(left, elements[prev].src);
+      setSide(right, elements[next].src);
+    }
+    showCenter(elements[i]);
+
+    // фон: второе кольцо
+    preload(elements[(prev-1+elements.length)%elements.length].src);
+    preload(elements[(next+1)%elements.length].src);
   }
 
   prevBtn.onclick=()=>show(index-1);
@@ -287,4 +305,3 @@
 
 </body>
 </html>
-
