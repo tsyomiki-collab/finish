@@ -1,6 +1,12 @@
 <div id="rg-gallery">
   <div id="rg-stage">
     <div id="rg-center">
+      <!-- LOADING -->
+      <span class="rg-loading is-on" aria-hidden="true">loading...</span>
+
+      <!-- TAP FOR SOUND -->
+      <span class="rg-unmute" role="button" aria-label="Tap for sound"></span>
+
       <div class="rg-nav">
         <button class="rg-btn rg-prev" type="button">⟨</button>
         <button class="rg-btn rg-next" type="button">⟩</button>
@@ -9,19 +15,84 @@
   </div>
 </div>
 
-<!-- прогрев соединений (ускоряет старт запросов) -->
+<!-- прогрев соединений -->
 <link rel="dns-prefetch" href="//raw.githubusercontent.com">
 <link rel="preconnect" href="https://raw.githubusercontent.com" crossorigin>
 <link rel="dns-prefetch" href="//res.cloudinary.com">
 <link rel="preconnect" href="https://res.cloudinary.com" crossorigin>
 
 <style>
+@font-face{
+  font-family:"SegoeUI";
+  src:
+    local("Segoe UI Light"),
+    url("https://c.s-microsoft.com/static/fonts/segoe-ui/west-european/light/latest.woff2") format("woff2"),
+    url("https://c.s-microsoft.com/static/fonts/segoe-ui/west-european/light/latest.woff") format("woff"),
+    url("https://c.s-microsoft.com/static/fonts/segoe-ui/west-european/light/latest.ttf") format("truetype");
+  font-weight:300;
+  font-style:normal;
+  font-display:swap;
+}
+
 #rg-gallery{position:fixed;inset:0;background:#fcfcfc;z-index:9999;overflow:hidden}
 #rg-stage{position:absolute;inset:0;top:-60px;display:flex;align-items:center;justify-content:center;pointer-events:none}
-#rg-center{width:74vw;max-width:430px;height:50vh;max-height:460px;display:flex;align-items:center;justify-content:center;position:relative;pointer-events:none}
+
+/* ✅ фото/видео БОЛЬШЕ (nav и отступы те же) */
+#rg-center{
+  width:86vw;max-width:520px;
+  height:62vh;max-height:560px;
+  display:flex;align-items:center;justify-content:center;
+  position:relative;pointer-events:none
+}
+
 .rg-main{max-width:100%;max-height:100%;object-fit:contain;display:block;pointer-events:auto}
+
 .rg-nav{position:absolute;left:50%;bottom:-65px;transform:translateX(-50%);display:flex;gap:25px;pointer-events:auto}
 .rg-btn{font-size:1.6rem;background:none;border:none;color:#666;cursor:pointer;padding:4px 8px;user-select:none;-webkit-tap-highlight-color:transparent}
+
+/* ✅ LOADING: 10px + SegoeUI 300 + mix-blend */
+.rg-loading{
+  position:absolute;left:50%;top:50%;
+  transform:translate(-50%,-50%);
+  font-family:"SegoeUI","Segoe UI",-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif;
+  font-weight:300;
+  font-size:10px;
+  line-height:16px;
+  letter-spacing:0.01em;
+  white-space:nowrap;
+  color:#fff;
+  mix-blend-mode:difference;
+  opacity:.9;
+  pointer-events:none;
+  user-select:none;
+  display:none;
+}
+.rg-loading.is-on{display:block}
+
+/* ✅ TAP FOR SOUND: 10px, тот же шрифт */
+.rg-unmute{
+  position:absolute;left:50%;top:50%;
+  transform:translate(-50%,-50%);
+  display:none;
+  z-index:5;
+  pointer-events:auto;
+  cursor:pointer;
+  user-select:none;
+  -webkit-tap-highlight-color:transparent;
+}
+.rg-unmute.is-on{display:block}
+.rg-unmute::after{
+  content:"tap for sound";
+  font-family:"SegoeUI","Segoe UI",-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif;
+  font-weight:300;
+  font-size:10px;
+  line-height:16px;
+  letter-spacing:0.01em;
+  white-space:nowrap;
+  color:#fff;
+  mix-blend-mode:difference;
+  opacity:.9;
+}
 </style>
 
 <script>
@@ -30,7 +101,8 @@
   if(!gallery||gallery.dataset.rgInit==="1")return;
   gallery.dataset.rgInit="1";
 
-  const elements=[
+  // ---------- исходные элементы ----------
+  const elementsRaw=[
     {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/magata/main/1.jpg"},
     {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/magata/main/2.jpg"},
     {
@@ -46,25 +118,52 @@
     {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/magata/main/9.jpg"}
   ];
 
+  // ---------- ускорение картинок/постеров через Cloudinary fetch ----------
+  const CLOUD="dmtnse4sz";
+  const DPR=Math.max(1, Math.min(3, window.devicePixelRatio||1));
+  const TARGET_W=Math.min(1600, Math.ceil(520 * DPR * 1.6)); // под max-width:520
+
+  function cldFetch(url){
+    return `https://res.cloudinary.com/${CLOUD}/image/fetch/f_auto,q_auto:eco,fl_progressive,w_${TARGET_W}/${encodeURIComponent(url)}`;
+  }
+
+  const elements = elementsRaw.map(el=>{
+    if(el.type==="img") return {...el, src: cldFetch(el.src)};
+    if(el.type==="video" && el.poster) return {...el, poster: cldFetch(el.poster)};
+    return el;
+  });
+
   const center=document.getElementById("rg-center");
   const prevBtn=gallery.querySelector(".rg-prev");
   const nextBtn=gallery.querySelector(".rg-next");
+  const loadingEl=center.querySelector(".rg-loading");
+  const unmuteEl=center.querySelector(".rg-unmute");
 
   let index=0, token=0, currentVideo=null;
 
   // Храним ГОТОВЫЕ DOM-ноды и промисы готовности
   const nodeCache = new Map();      // key -> <img> / <video>
   const readyCache = new Map();     // key -> Promise (декод/метаданные)
-
   const ric = window.requestIdleCallback || ((cb)=>setTimeout(()=>cb({timeRemaining:()=>0}), 120));
 
   function keyOf(el){ return el.type==="video" ? ("v:"+el.src) : ("i:"+el.src); }
+
+  function setLoading(on){ loadingEl.classList.toggle("is-on", !!on); }
+  function setUnmute(on){ unmuteEl.classList.toggle("is-on", !!on); }
+
+  function clearCenterKeepUI(){
+    const nav=center.querySelector(".rg-nav");
+    center.innerHTML="";
+    center.appendChild(loadingEl);
+    center.appendChild(unmuteEl);
+    if(nav) center.appendChild(nav);
+  }
 
   function makeImg(src){
     const img = new Image();
     img.className = "rg-main";
     img.decoding = "async";
-    img.loading = "eager"; // внутри попапа это норм
+    img.loading = "eager";
     img.src = src;
     return img;
   }
@@ -72,23 +171,28 @@
   function makeVideo(el){
     const v = document.createElement("video");
     v.className="rg-main";
-    v.src = el.src;
-    if(el.poster) v.poster = el.poster;
 
+    // атрибуты ДО src (Safari/iframe)
     v.autoplay=true;
     v.loop=true;
     v.controls=false;
-    v.playsInline=true;
-    v.preload="auto";
 
+    v.playsInline=true;
+    v.setAttribute("playsinline","");
+    v.setAttribute("webkit-playsinline","");
+
+    v.preload="auto";
     v.setAttribute("controlsList","nodownload noplaybackrate noremoteplayback");
     v.setAttribute("disablePictureInPicture","");
     v.setAttribute("disableRemotePlayback","");
+
+    if(el.poster) v.poster = el.poster;
+    v.src = el.src;
+
     return v;
   }
 
   function setPriority(node, priority){
-    // Chromium: fetchpriority, Safari просто проигнорит — ок
     if(node && node.tagName==="IMG"){
       try{ node.fetchPriority = priority; }catch(e){}
     }
@@ -110,28 +214,26 @@
     const p = new Promise((resolve)=>{
       if(el.type==="img"){
         const img = ensureNode(el);
-        img.onload = img.onerror = async () => {
-          // decode ускоряет «показалось сразу четко»
+
+        const done = async ()=>{
           if(img.decode){
             try{ await img.decode(); }catch(e){}
           }
           resolve();
         };
-        // если уже закешировано браузером и complete=true
-        if(img.complete){
-          (async ()=>{
-            if(img.decode){
-              try{ await img.decode(); }catch(e){}
-            }
-            resolve();
-          })();
-        }
+
+        if(img.complete){ done(); return; }
+        img.onload = done;
+        img.onerror = done;
       } else {
-        // видео: достаточно метаданных, чтобы вставка была “мгновенной”
+        // видео: достаточно метаданных + прогреть постер
         const v = ensureNode(el);
-        v.onloadedmetadata = v.onerror = () => resolve();
-        // если метаданные уже есть
-        if(v.readyState >= 1) resolve();
+        if(el.poster) ensureReady({type:"img", src: el.poster});
+
+        const done = ()=>resolve();
+        if(v.readyState >= 1){ resolve(); return; }
+        v.onloadedmetadata = done;
+        v.onerror = done;
       }
     });
 
@@ -139,94 +241,108 @@
     return p;
   }
 
-  function clearCenterKeepNav(){
-    const nav=center.querySelector(".rg-nav");
-    center.innerHTML="";
-    if(nav) center.appendChild(nav);
-  }
+  async function startVideoWithSoundOrTap(v){
+    setUnmute(false);
 
-  async function tryPlayWithSound(v){
-    v.muted=false;
-    try{ await v.play(); return true; }catch(e){}
-    return false;
-  }
+    // 1) пробуем со звуком
+    v.muted = false;
+    v.volume = 1;
+    try{
+      await v.play();
+      setUnmute(false);
+      return;
+    }catch(e){}
 
-  async function startVideo(v){
-    if(await tryPlayWithSound(v)) return;
-
-    v.muted=true;
+    // 2) не дали — играем muted и показываем tap
+    v.muted = true;
+    v.volume = 0;
     try{ await v.play(); }catch(e){}
+    setUnmute(true);
 
-    const enable=async()=>{
-      v.muted=false;
-      try{ await v.play(); }catch(e){}
-      v.removeEventListener("click", enable);
-      v.removeEventListener("pointerdown", enable);
-      window.removeEventListener("keydown", onKey);
+    const unlock = async ()=>{
+      try{
+        v.muted = false;
+        v.volume = 1;
+        await v.play();
+        setUnmute(false);
+      }catch(e){
+        setUnmute(true);
+      }
     };
-    const onKey=()=>enable();
 
-    v.addEventListener("click", enable, {once:true});
-    v.addEventListener("pointerdown", enable, {once:true});
-    window.addEventListener("keydown", onKey, {once:true});
+    // один жест — одна попытка
+    unmuteEl.onclick = (e)=>{ e.preventDefault(); unlock(); };
+    gallery.addEventListener("pointerdown", unlock, {once:true, passive:true, capture:true});
+    gallery.addEventListener("touchstart", unlock, {once:true, passive:true, capture:true});
+    window.addEventListener("keydown", unlock, {once:true, capture:true});
   }
 
   function mountNode(el){
-    clearCenterKeepNav();
+    clearCenterKeepUI();
+    setLoading(true);
+    setUnmute(false);
 
     if(currentVideo){
-      currentVideo.pause();
+      try{ currentVideo.pause(); }catch(e){}
       currentVideo = null;
     }
 
     const node = ensureNode(el);
+    center.insertBefore(node, center.querySelector(".rg-nav"));
 
-    // перекидываем ноду (одна и та же) — если она где-то была, просто отцепится
-    center.appendChild(node);
-
-    if(el.type==="video"){
-      currentVideo = node;
-      startVideo(node);
+    if(el.type==="img"){
+      // картинка уже готова (мы её ждём до mount) -> можно сразу прятать лоадер
+      setLoading(false);
+      return;
     }
+
+    // видео: прячем лоадер когда реально пошло
+    const v = node;
+    currentVideo = v;
+
+    const hide = ()=>setLoading(false);
+    v.addEventListener("playing", hide, {once:true});
+    v.addEventListener("loadeddata", hide, {once:true});
+    v.addEventListener("error", hide, {once:true});
+
+    startVideoWithSoundOrTap(v);
   }
 
   function preloadAround(i){
-    const prev=(i-1+elements.length)%elements.length;
-    const next=(i+1)%elements.length;
+    const n=elements.length;
+    const prev=(i-1+n)%n;
+    const next=(i+1+n)%n;
 
-    // текущий — высокий приоритет
     const curNode = ensureNode(elements[i]);
     setPriority(curNode, "high");
-
-    // соседи — низкий
     setPriority(ensureNode(elements[prev]), "low");
     setPriority(ensureNode(elements[next]), "low");
 
-    // запускаем “готовность”
     ensureReady(elements[i]);
     ensureReady(elements[prev]);
     ensureReady(elements[next]);
 
-    // дальше по кругу — в idle, чтобы не забивать канал
     ric(()=>{
-      ensureReady(elements[(prev-1+elements.length)%elements.length]);
-      ensureReady(elements[(next+1)%elements.length]);
+      ensureReady(elements[(prev-1+n)%n]);
+      ensureReady(elements[(next+1+n)%n]);
     });
   }
 
   async function show(i){
     const t=++token;
-    if(i<0)i=elements.length-1;
-    if(i>=elements.length)i=0;
+    const n=elements.length;
+
+    if(i<0)i=n-1;
+    if(i>=n)i=0;
     index=i;
 
-    preloadAround(i);
+    setLoading(true);       // ✅ отчёт: включаю лоадер сразу
+    preloadAround(i);       // ✅ отчёт: грею текущий + соседей
 
-    // Ждём готовность текущего (декод картинки / метаданные видео)
-    await ensureReady(elements[i]);
+    await ensureReady(elements[i]); // ✅ отчёт: жду decode/metadata текущего
     if(t!==token) return;
 
-    mountNode(elements[i]);
+    mountNode(elements[i]); // ✅ отчёт: монтирую в центр
   }
 
   prevBtn.onclick=()=>show(index-1);
@@ -239,13 +355,14 @@
     if(Math.abs(d)>40){ d<0?show(index+1):show(index-1); }
   },{passive:true});
 
-  // пауза видео, если вкладку свернули
   document.addEventListener("visibilitychange", ()=>{
     if(document.hidden && currentVideo) currentVideo.pause();
-    else if(!document.hidden && currentVideo) startVideo(currentVideo);
+    else if(!document.hidden && currentVideo){
+      // пытаемся продолжить
+      currentVideo.play().catch(()=>{});
+    }
   });
 
-  // старт: чуть заранее прогреем первый элемент
   preloadAround(0);
   show(0);
 })();
