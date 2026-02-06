@@ -1,6 +1,9 @@
 <div id="rg-gallery">
   <div id="rg-stage">
     <div id="rg-center">
+      <!-- LOADING (mix-blend) -->
+      <span class="rg-loading is-on" aria-hidden="true">loading...</span>
+
       <div class="rg-nav">
         <button class="rg-btn rg-prev" type="button">⟨</button>
         <button class="rg-btn rg-next" type="button">⟩</button>
@@ -14,12 +17,53 @@
 <link rel="preconnect" href="https://raw.githubusercontent.com" crossorigin>
 
 <style>
+@font-face{
+  font-family:"SegoeUI";
+  src:
+    local("Segoe UI Light"),
+    url("https://c.s-microsoft.com/static/fonts/segoe-ui/west-european/light/latest.woff2") format("woff2"),
+    url("https://c.s-microsoft.com/static/fonts/segoe-ui/west-european/light/latest.woff") format("woff"),
+    url("https://c.s-microsoft.com/static/fonts/segoe-ui/west-european/light/latest.ttf") format("truetype");
+  font-weight:300;
+  font-style:normal;
+  font-display:swap;
+}
+
 #rg-gallery{position:fixed;inset:0;background:#fcfcfc;z-index:9999;overflow:hidden}
 #rg-stage{position:absolute;inset:0;top:-60px;display:flex;align-items:center;justify-content:center;pointer-events:none}
-#rg-center{width:74vw;max-width:430px;height:50vh;max-height:460px;display:flex;align-items:center;justify-content:center;position:relative;pointer-events:none}
+
+/* ✅ больше картинки, но отступы навигации/стрелок те же */
+#rg-center{
+  width:86vw;max-width:520px;
+  height:62vh;max-height:560px;
+  display:flex;align-items:center;justify-content:center;
+  position:relative;pointer-events:none
+}
+
 .rg-main{max-width:100%;max-height:100%;object-fit:contain;display:block;pointer-events:auto}
+
 .rg-nav{position:absolute;left:50%;bottom:-65px;transform:translateX(-50%);display:flex;gap:25px;pointer-events:auto}
 .rg-btn{font-size:1.6rem;background:none;border:none;color:#666;cursor:pointer;padding:4px 8px;user-select:none;-webkit-tap-highlight-color:transparent}
+
+/* ✅ LOADING: SegoeUI 300, size 10, mix-blend */
+.rg-loading{
+  position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
+  font-family:"SegoeUI","Segoe UI",-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif;
+  font-weight:300;
+  font-size:10px;
+  line-height:16px;
+  letter-spacing:0.01em;
+  white-space:nowrap;
+
+  color:#fff;
+  mix-blend-mode:difference;
+  opacity:.9;
+
+  pointer-events:none;
+  user-select:none;
+  display:none;
+}
+.rg-loading.is-on{display:block}
 </style>
 
 <script>
@@ -51,12 +95,25 @@
   const center=document.getElementById("rg-center");
   const prevBtn=gallery.querySelector(".rg-prev");
   const nextBtn=gallery.querySelector(".rg-next");
+  const loading = center.querySelector(".rg-loading");
+  const nav = center.querySelector(".rg-nav");
 
-  // Кэш готовых нод + кэш "готовности" (load/decode)
+  // кэш нод + кэш "готовности"
   const nodeCache = new Map();   // src -> <img>
   const readyCache = new Map();  // src -> Promise
-
   const ric = window.requestIdleCallback || ((cb)=>setTimeout(()=>cb({timeRemaining:()=>0}), 120));
+
+  function setLoading(on){
+    loading.classList.toggle("is-on", !!on);
+  }
+
+  function clearCenterKeepUI(){
+    const keepLoading = loading;
+    const keepNav = nav;
+    center.innerHTML="";
+    center.appendChild(keepLoading);
+    center.appendChild(keepNav);
+  }
 
   function ensureImg(src){
     if(nodeCache.has(src)) return nodeCache.get(src);
@@ -78,14 +135,14 @@
 
     const p = new Promise((resolve)=>{
       const done = async ()=>{
-        // decode делает "появилось сразу чётко"
+        // decode = меньше “мыла/мигания”, но не блокируем навигацию
         if(img.decode){
           try{ await img.decode(); }catch(e){}
         }
-        resolve();
+        resolve(true);
       };
 
-      if(img.complete) { done(); return; }
+      if(img.complete){ done(); return; }
       img.onload = done;
       img.onerror = done;
     });
@@ -95,20 +152,13 @@
   }
 
   function setPriority(img, priority){
-    // Chromium поддерживает, Safari просто проигнорит
     try{ img.fetchPriority = priority; }catch(e){}
   }
 
-  function clearCenterKeepNav(){
-    const nav = center.querySelector(".rg-nav");
-    center.innerHTML = "";
-    if(nav) center.appendChild(nav);
-  }
-
   function mountImg(src){
-    clearCenterKeepNav();
+    clearCenterKeepUI();
     const img = ensureImg(src);
-    center.appendChild(img); // переиспользуем ту же ноду
+    center.insertBefore(img, nav);
   }
 
   function preloadAround(i){
@@ -116,19 +166,21 @@
     const prev = (i-1+n)%n;
     const next = (i+1)%n;
 
-    const curSrc = elements[i].src;
+    const curSrc  = elements[i].src;
     const prevSrc = elements[prev].src;
     const nextSrc = elements[next].src;
 
+    // приоритеты: текущая high, соседи low
     setPriority(ensureImg(curSrc), "high");
     setPriority(ensureImg(prevSrc), "low");
     setPriority(ensureImg(nextSrc), "low");
 
+    // текущая + соседи
     ensureReady(curSrc);
     ensureReady(prevSrc);
     ensureReady(nextSrc);
 
-    // ещё чуть дальше — в idle
+    // второе кольцо в idle
     ric(()=>{
       ensureReady(elements[(prev-1+n)%n].src);
       ensureReady(elements[(next+1)%n].src);
@@ -143,15 +195,19 @@
     if(i>=n) i=0;
     index=i;
 
+    // ✅ показываем лоадинг сразу (чтобы вместо белого экрана был текст)
+    setLoading(true);
+
     preloadAround(i);
 
     const src = elements[i].src;
 
-    // ждём готовность текущей (load + decode)
+    // ждём готовность текущей
     await ensureReady(src);
     if(t!==token) return;
 
     mountImg(src);
+    setLoading(false);
   }
 
   prevBtn.onclick=()=>show(index-1);
@@ -164,7 +220,7 @@
     if(Math.abs(d)>40){ d<0?show(index+1):show(index-1); }
   },{passive:true});
 
-  // старт
+  // старт: прогреть соседей и показать 0 с лоадингом
   preloadAround(0);
   show(0);
 })();
