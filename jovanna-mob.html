@@ -15,6 +15,8 @@
 <!-- прогрев соединений -->
 <link rel="dns-prefetch" href="//raw.githubusercontent.com">
 <link rel="preconnect" href="https://raw.githubusercontent.com" crossorigin>
+<link rel="dns-prefetch" href="//res.cloudinary.com">
+<link rel="preconnect" href="https://res.cloudinary.com" crossorigin>
 
 <style>
 @font-face{
@@ -37,7 +39,8 @@
   width:86vw;max-width:520px;
   height:62vh;max-height:560px;
   display:flex;align-items:center;justify-content:center;
-  position:relative;pointer-events:none
+  position:relative;pointer-events:none;
+  contain:layout paint size;
 }
 
 .rg-main{max-width:100%;max-height:100%;object-fit:contain;display:block;pointer-events:auto}
@@ -54,11 +57,9 @@
   line-height:16px;
   letter-spacing:0.01em;
   white-space:nowrap;
-
   color:#fff;
   mix-blend-mode:difference;
   opacity:.9;
-
   pointer-events:none;
   user-select:none;
   display:none;
@@ -72,70 +73,85 @@
   if(!gallery||gallery.dataset.rgInit==="1")return;
   gallery.dataset.rgInit="1";
 
-  const elements=[
-    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/jovan-s/main/1.png"},
-    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/jovan-s/main/2.png"},
-    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/jovan-s/main/3.png"},
-    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/jovan-s/main/4.png"},
-    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/jovan-s/main/5.png"},
-    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/jovan-s/main/6.png"},
-    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/jovan-s/main/7.png"},
-    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/jovan-s/main/8.png"},
-    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/jovan-s/main/9.png"},
-    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/jovan-s/main/10.jpg"},
-    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/jovan-s/main/11.png"},
-    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/jovan-s/main/12.png"},
-    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/jovan-s/main/13.png"},
-    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/jovan-s/main/14.png"},
-    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/jovan-s/main/15.png"}
+  // ---------- материалы (jovan-s) ----------
+  const originals=[
+    "https://raw.githubusercontent.com/tsyomiki-collab/jovan-s/main/1.png",
+    "https://raw.githubusercontent.com/tsyomiki-collab/jovan-s/main/2.png",
+    "https://raw.githubusercontent.com/tsyomiki-collab/jovan-s/main/3.png",
+    "https://raw.githubusercontent.com/tsyomiki-collab/jovan-s/main/4.png",
+    "https://raw.githubusercontent.com/tsyomiki-collab/jovan-s/main/5.png",
+    "https://raw.githubusercontent.com/tsyomiki-collab/jovan-s/main/6.png",
+    "https://raw.githubusercontent.com/tsyomiki-collab/jovan-s/main/7.png",
+    "https://raw.githubusercontent.com/tsyomiki-collab/jovan-s/main/8.png",
+    "https://raw.githubusercontent.com/tsyomiki-collab/jovan-s/main/9.png",
+    "https://raw.githubusercontent.com/tsyomiki-collab/jovan-s/main/10.jpg",
+    "https://raw.githubusercontent.com/tsyomiki-collab/jovan-s/main/11.png",
+    "https://raw.githubusercontent.com/tsyomiki-collab/jovan-s/main/12.png",
+    "https://raw.githubusercontent.com/tsyomiki-collab/jovan-s/main/13.png",
+    "https://raw.githubusercontent.com/tsyomiki-collab/jovan-s/main/14.png",
+    "https://raw.githubusercontent.com/tsyomiki-collab/jovan-s/main/15.png"
   ];
 
-  let index=0, token=0;
+  // ---------- ускорение: Cloudinary fetch под размер центра ----------
+  const CLOUD="dmtnse4sz";
+  const DPR=Math.max(1, Math.min(3, window.devicePixelRatio||1));
+  const centerCSSMax=520;
+  const centerPx=Math.min(centerCSSMax, Math.round(window.innerWidth*0.86));
+  const W=Math.min(2000, Math.ceil(centerPx*DPR*1.6));
 
+  function cldFetch(url){
+    // eco = быстрее; если хочешь чуть лучше — поменяй на q_auto:good
+    return `https://res.cloudinary.com/${CLOUD}/image/fetch/f_auto,q_auto:eco,fl_progressive,fl_lossy,w_${W}/${encodeURIComponent(url)}`;
+  }
+
+  const elements = originals.map(u=>({type:"img", src: cldFetch(u)}));
+
+  // ---------- DOM ----------
   const center=document.getElementById("rg-center");
   const prevBtn=gallery.querySelector(".rg-prev");
   const nextBtn=gallery.querySelector(".rg-next");
   const loading = center.querySelector(".rg-loading");
   const nav = center.querySelector(".rg-nav");
 
-  // кэш нод + кэш "готовности"
+  // ---------- cache ----------
   const nodeCache = new Map();   // src -> <img>
   const readyCache = new Map();  // src -> Promise
   const ric = window.requestIdleCallback || ((cb)=>setTimeout(()=>cb({timeRemaining:()=>0}), 120));
 
-  function setLoading(on){
-    loading.classList.toggle("is-on", !!on);
-  }
+  let index=0, token=0;
+
+  const setLoading=(on)=>loading.classList.toggle("is-on", !!on);
 
   function clearCenterKeepUI(){
-    const keepLoading = loading;
-    const keepNav = nav;
     center.innerHTML="";
-    center.appendChild(keepLoading);
-    center.appendChild(keepNav);
+    center.appendChild(loading);
+    center.appendChild(nav);
   }
 
   function ensureImg(src){
     if(nodeCache.has(src)) return nodeCache.get(src);
 
     const img = new Image();
-    img.className = "rg-main";
-    img.decoding = "async";
-    img.loading = "eager";
-    img.src = src;
+    img.className="rg-main";
+    img.decoding="async";
+    img.loading="eager";
+    img.src=src;
 
     nodeCache.set(src, img);
     return img;
   }
 
+  function setPriority(img, priority){
+    try{ img.fetchPriority = priority; }catch(e){}
+  }
+
+  // ✅ load + decode (чтобы не белый экран и меньше “мигания”)
   function ensureReady(src){
     if(readyCache.has(src)) return readyCache.get(src);
 
     const img = ensureImg(src);
-
     const p = new Promise((resolve)=>{
       const done = async ()=>{
-        // decode = меньше “мыла/мигания”, но не блокируем навигацию
         if(img.decode){
           try{ await img.decode(); }catch(e){}
         }
@@ -151,36 +167,28 @@
     return p;
   }
 
-  function setPriority(img, priority){
-    try{ img.fetchPriority = priority; }catch(e){}
-  }
-
   function mountImg(src){
     clearCenterKeepUI();
-    const img = ensureImg(src);
-    center.insertBefore(img, nav);
+    center.insertBefore(ensureImg(src), nav);
   }
 
   function preloadAround(i){
-    const n = elements.length;
-    const prev = (i-1+n)%n;
-    const next = (i+1)%n;
+    const n=elements.length;
+    const prev=(i-1+n)%n;
+    const next=(i+1)%n;
 
     const curSrc  = elements[i].src;
     const prevSrc = elements[prev].src;
     const nextSrc = elements[next].src;
 
-    // приоритеты: текущая high, соседи low
     setPriority(ensureImg(curSrc), "high");
     setPriority(ensureImg(prevSrc), "low");
     setPriority(ensureImg(nextSrc), "low");
 
-    // текущая + соседи
     ensureReady(curSrc);
     ensureReady(prevSrc);
     ensureReady(nextSrc);
 
-    // второе кольцо в idle
     ric(()=>{
       ensureReady(elements[(prev-1+n)%n].src);
       ensureReady(elements[(next+1)%n].src);
@@ -188,21 +196,16 @@
   }
 
   async function show(i){
-    const t = ++token;
-    const n = elements.length;
-
-    if(i<0) i=n-1;
-    if(i>=n) i=0;
+    const t=++token;
+    const n=elements.length;
+    if(i<0)i=n-1;
+    if(i>=n)i=0;
     index=i;
 
-    // ✅ показываем лоадинг сразу (чтобы вместо белого экрана был текст)
     setLoading(true);
-
     preloadAround(i);
 
-    const src = elements[i].src;
-
-    // ждём готовность текущей
+    const src=elements[i].src;
     await ensureReady(src);
     if(t!==token) return;
 
@@ -220,7 +223,7 @@
     if(Math.abs(d)>40){ d<0?show(index+1):show(index-1); }
   },{passive:true});
 
-  // старт: прогреть соседей и показать 0 с лоадингом
+  // старт
   preloadAround(0);
   show(0);
 })();
