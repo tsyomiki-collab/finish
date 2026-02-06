@@ -3,12 +3,16 @@
 
   <div class="rg-wrapper">
     <div class="rg-sideSlot">
+      <span class="rg-loading" aria-hidden="true">loading...</span>
       <img id="rg-left" class="rg-side" alt="">
     </div>
 
-    <div id="rg-center" class="rg-centerSlot"></div>
+    <div id="rg-center" class="rg-centerSlot">
+      <span class="rg-loading is-on" aria-hidden="true">loading...</span>
+    </div>
 
     <div class="rg-sideSlot">
+      <span class="rg-loading" aria-hidden="true">loading...</span>
       <img id="rg-right" class="rg-side" alt="">
     </div>
   </div>
@@ -17,6 +21,18 @@
 </div>
 
 <style>
+@font-face{
+  font-family:"SegoeUI";
+  src:
+    local("Segoe UI Light"),
+    url("https://c.s-microsoft.com/static/fonts/segoe-ui/west-european/light/latest.woff2") format("woff2"),
+    url("https://c.s-microsoft.com/static/fonts/segoe-ui/west-european/light/latest.woff") format("woff"),
+    url("https://c.s-microsoft.com/static/fonts/segoe-ui/west-european/light/latest.ttf") format("truetype");
+  font-weight:300;
+  font-style:normal;
+  font-display:swap;
+}
+
 #rg-gallery{
   position:fixed;
   inset:0;
@@ -37,6 +53,7 @@
 }
 
 .rg-sideSlot{
+  position:relative;
   width:360px;
   height:330px;
   display:flex;
@@ -47,6 +64,7 @@
 }
 
 .rg-centerSlot{
+  position:relative;
   width:min(1180px, 70vw);
   height:735px;
   display:flex;
@@ -74,14 +92,12 @@
   position:fixed;
   top:50%;
   transform:translateY(-50%);
-
   width:120px;
-  height: 120px;
+  height:120px;
   display:flex;
   align-items:center;
   justify-content:center;
   box-sizing:border-box;
-
   font-size:3rem;
   line-height:1;
   padding:0;
@@ -90,7 +106,6 @@
   color:#666;
   cursor:pointer;
   user-select:none;
-
   appearance:none;
   -webkit-appearance:none;
   -webkit-tap-highlight-color:transparent;
@@ -102,9 +117,7 @@
   outline-offset:3px;
 }
 
-.rg-btn:active{
-  transform:translateY(-50%);
-}
+.rg-btn:active{ transform:translateY(-50%); }
 
 .rg-prev{ left:80px; }
 .rg-next{ right:80px; }
@@ -118,19 +131,44 @@
 .rg-centerSlot, .rg-sideSlot { contain: layout paint size; }
 .rg-main { will-change: contents; }
 
-/* ✅ если текущий элемент горизонтальный — боковых НЕТ (и место не занимаем) */
-#rg-gallery.rg-wide .rg-sideSlot{
+/* ✅ если текущий элемент горизонтальный — боковых НЕТ */
+#rg-gallery.rg-wide .rg-sideSlot{ display:none; }
+
+/* loading... */
+.rg-loading{
+  position:absolute;
+  left:50%;
+  top:50%;
+  transform:translate(-50%,-50%);
+  font-family:"SegoeUI","Segoe UI",-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif;
+  font-weight:300;            /* ✅ НЕ 600, а 300 */
+  font-size:13px;
+  letter-spacing:.01em;
+  line-height:16px;
+  color:#000;
+  opacity:.55;
+  pointer-events:none;
+  user-select:none;
   display:none;
 }
+.rg-loading.is-on{ display:block; }
 
-/* подсказка для звука (когда браузер блокирует autoplay со звуком) */
+/* пока грузится — прячем контент, чтобы не мелькала старая картинка */
+.rg-side.is-loading,
+.rg-main.is-loading{ opacity:0; }
+
+/* подсказка для звука */
 .rg-soundHint{
   position:absolute;
   left:50%;
   bottom:14px;
   transform:translateX(-50%);
   padding:10px 14px;
-  font:14px/1.1 system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+  font-family:"SegoeUI","Segoe UI",-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif;
+  font-weight:300;            /* ✅ 300 */
+  font-size:13px;
+  letter-spacing:.01em;
+  line-height:16px;
   border:1px solid rgba(0,0,0,.12);
   background:rgba(255,255,255,.92);
   border-radius:999px;
@@ -149,7 +187,6 @@
   if(gallery.dataset.rgInit === "1") return;
   gallery.dataset.rgInit = "1";
 
-  // ✅ НОВЫЕ МАТЕРИАЛЫ (magata) + ВИДЕО
   const elements=[
     {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/magata/main/1.jpg"},
     {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/magata/main/2.jpg"},
@@ -169,39 +206,38 @@
   let index = 0;
   let token = 0;
 
-  const left   = document.getElementById("rg-left");
-  const right  = document.getElementById("rg-right");
-  const center = document.getElementById("rg-center");
+  const left    = document.getElementById("rg-left");
+  const right   = document.getElementById("rg-right");
+  const center  = document.getElementById("rg-center");
   const prevBtn = gallery.querySelector(".rg-prev");
   const nextBtn = gallery.querySelector(".rg-next");
   if(!left || !right || !center || !prevBtn || !nextBtn) return;
 
-  // кнопка-подсказка для включения звука (если браузер запретит autoplay со звуком)
+  // sound hint
   const soundHint = document.createElement("button");
   soundHint.type = "button";
   soundHint.className = "rg-soundHint";
   soundHint.textContent = "tap for sound";
-  center.style.position = "relative";
   center.appendChild(soundHint);
 
+  // caches
   const imgCache = new Map();
   const isWideCache = new Map();
   let activeVideo = null;
 
   function thumbSrc(el){
     if(!el) return "";
-    if(el.type === "video") return el.poster || "";
-    return el.src || "";
+    return el.type === "video" ? (el.poster || "") : (el.src || "");
   }
 
   function preloadImg(url){
-    if(!url) return Promise.resolve();
+    if(!url) return Promise.resolve(false);
     if(imgCache.has(url)) return imgCache.get(url);
 
     const p = new Promise(resolve=>{
       const img = new Image();
       img.decoding = "async";
-      img.onload = () => resolve(true);
+      img.onload  = () => resolve(true);
       img.onerror = () => resolve(false);
       img.src = url;
     });
@@ -216,7 +252,7 @@
     const key = el.type === "video" ? ("v:" + (el.src||"")) : ("i:" + (el.src||""));
     if(isWideCache.has(key)) return Promise.resolve(isWideCache.get(key));
 
-    // для видео: сперва пробуем по постеру (быстрее), если нет — по метаданным видео
+    // video: по постеру быстрее
     if(el.type === "video"){
       if(el.poster){
         return new Promise(resolve=>{
@@ -227,42 +263,14 @@
             resolve(wide);
           };
           img.onerror = () => {
-            // fallback: метаданные видео
-            const v = document.createElement("video");
-            v.preload = "metadata";
-            v.onloadedmetadata = () => {
-              const wide = v.videoWidth > v.videoHeight;
-              isWideCache.set(key, wide);
-              resolve(wide);
-              v.src = "";
-            };
-            v.onerror = () => {
-              isWideCache.set(key, false);
-              resolve(false);
-              v.src = "";
-            };
-            v.src = el.src;
+            isWideCache.set(key, false);
+            resolve(false);
           };
           img.src = el.poster;
         });
       }
-
-      return new Promise(resolve=>{
-        const v = document.createElement("video");
-        v.preload = "metadata";
-        v.onloadedmetadata = () => {
-          const wide = v.videoWidth > v.videoHeight;
-          isWideCache.set(key, wide);
-          resolve(wide);
-          v.src = "";
-        };
-        v.onerror = () => {
-          isWideCache.set(key, false);
-          resolve(false);
-          v.src = "";
-        };
-        v.src = el.src;
-      });
+      isWideCache.set(key, false);
+      return Promise.resolve(false);
     }
 
     // img
@@ -281,49 +289,83 @@
     });
   }
 
+  function setLoading(slotEl, on){
+    const l = slotEl.querySelector(".rg-loading");
+    if(l) l.classList.toggle("is-on", !!on);
+  }
+
   function stopActiveVideo(){
     if(activeVideo){
       try{ activeVideo.pause(); }catch(e){}
-      activeVideo.src = "";
-      activeVideo.load?.();
+      try{ activeVideo.removeAttribute("src"); }catch(e){}
+      try{ activeVideo.load(); }catch(e){}
       activeVideo = null;
     }
     gallery.classList.remove("rg-needsTap");
     soundHint.style.display = "none";
   }
 
+  function setSide(imgEl, src){
+    const slot = imgEl.parentElement;
+    setLoading(slot, true);
+
+    imgEl.classList.add("is-loading");
+    imgEl.decoding = "async";
+    imgEl.loading = "eager";
+    imgEl.fetchPriority = "low";
+
+    imgEl.onload = ()=>{ imgEl.classList.remove("is-loading"); setLoading(slot,false); };
+    imgEl.onerror= ()=>{ imgEl.classList.remove("is-loading"); setLoading(slot,false); };
+
+    imgEl.src = src || "";
+  }
+
   function showCenter(el){
     stopActiveVideo();
 
-    // чистим центр, но оставляем soundHint (мы его обратно добавим)
-    center.innerHTML = "";
+    // reset center, keep loader & hint
+    center.innerHTML = '<span class="rg-loading is-on" aria-hidden="true">loading...</span>';
     center.appendChild(soundHint);
 
     if(el.type === "video"){
+      // для видео: считаем "загружено", когда загрузился постер/первый кадр
+      setLoading(center, true);
+
       const v = document.createElement("video");
-      v.className = "rg-main";
+      v.className = "rg-main is-loading";
+      v.playsInline = true;
+      v.loop = true;
+      v.autoplay = true;
+      v.controls = false;          /* ✅ без панели */
+      v.preload = "auto";
       v.src = el.src;
       if(el.poster) v.poster = el.poster;
 
-      v.autoplay = true;
-      v.muted = false;          // ❗ просим autoplay СО ЗВУКОМ
-      v.playsInline = true;
-      v.loop = true;
-      v.controls = false;
-
-      // максимально “без панели”
+      // максимально "без UI"
       v.setAttribute("controlslist","nodownload noplaybackrate noremoteplayback");
       v.setAttribute("disablepictureinpicture","");
+      v.setAttribute("webkit-playsinline","");
 
       center.appendChild(v);
       activeVideo = v;
 
-      // пробуем запустить со звуком; если браузер заблокирует — запускаем muted и просим тап для звука
+      // когда появился кадр — снимаем loading
+      const ready = ()=>{
+        v.classList.remove("is-loading");
+        setLoading(center, false);
+        v.removeEventListener("loadeddata", ready);
+        v.removeEventListener("canplay", ready);
+      };
+      v.addEventListener("loadeddata", ready, {once:true});
+      v.addEventListener("canplay", ready, {once:true});
+
+      // autoplay со звуком почти всегда блокируется — поэтому делаем best-effort:
       const tryPlay = async ()=>{
         try{
           v.muted = false;
           await v.play();
           gallery.classList.remove("rg-needsTap");
+          soundHint.style.display = "none";
         }catch(err){
           try{
             v.muted = true;
@@ -334,7 +376,6 @@
         }
       };
 
-      // если пользователь тапнул — включаем звук
       soundHint.onclick = async ()=>{
         if(!activeVideo) return;
         try{
@@ -350,11 +391,17 @@
     }
 
     // img
+    setLoading(center, true);
+
     const img = document.createElement("img");
-    img.className = "rg-main";
+    img.className = "rg-main is-loading";
     img.decoding = "async";
     img.loading = "eager";
     img.fetchPriority = "high";
+
+    img.onload = ()=>{ img.classList.remove("is-loading"); setLoading(center,false); };
+    img.onerror= ()=>{ img.classList.remove("is-loading"); setLoading(center,false); };
+
     img.src = el.src;
     center.appendChild(img);
   }
@@ -369,7 +416,12 @@
     const prev = (i - 1 + elements.length) % elements.length;
     const next = (i + 1) % elements.length;
 
-    // прелоадим ТОЛЬКО картинки/постеры
+    // включаем лоадеры мгновенно
+    setLoading(left.parentElement, true);
+    setLoading(right.parentElement, true);
+    setLoading(center, true);
+
+    // прелоад: текущий/соседние (только картинки или постеры)
     await Promise.all([
       preloadImg(thumbSrc(elements[i])),
       preloadImg(thumbSrc(elements[prev])),
@@ -378,31 +430,29 @@
 
     if(t !== token) return;
 
-    // боковые превью (если видео — показываем poster)
-    left.src  = thumbSrc(elements[prev]) || "";
-    right.src = thumbSrc(elements[next]) || "";
-
+    // боковые показывают превью: картинки или постер видео
+    setSide(left,  thumbSrc(elements[prev]));
+    setSide(right, thumbSrc(elements[next]));
     showCenter(elements[i]);
 
-    // “второе кольцо” в фоне (тоже только картинки/постеры)
+    // второе кольцо — в фоне (idle)
     const prev2 = (prev - 1 + elements.length) % elements.length;
     const next2 = (next + 1) % elements.length;
-    preloadImg(thumbSrc(elements[prev2]));
-    preloadImg(thumbSrc(elements[next2]));
+    const bg = ()=>{
+      preloadImg(thumbSrc(elements[prev2]));
+      preloadImg(thumbSrc(elements[next2]));
+    };
+    if("requestIdleCallback" in window) requestIdleCallback(bg, {timeout:600});
+    else setTimeout(bg, 0);
 
-    // ✅ горизонтальная текущая — убираем боковые полностью
+    // горизонтальный текущий — убираем боковые
     const wide = await getIsWide(elements[i]);
     if(t !== token) return;
     gallery.classList.toggle("rg-wide", wide);
   }
 
-  // любая навигация — это “user gesture”, шанс включить звук на видео
-  function go(delta){
-    show(index + delta);
-  }
-
-  prevBtn.addEventListener("click", ()=>go(-1));
-  nextBtn.addEventListener("click", ()=>go(1));
+  prevBtn.addEventListener("click", ()=>show(index - 1));
+  nextBtn.addEventListener("click", ()=>show(index + 1));
 
   if(!window.__rgKeyHandler){
     window.__rgKeyHandler = e=>{
@@ -417,3 +467,4 @@
   show(0);
 })();
 </script>
+
