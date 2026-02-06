@@ -1,13 +1,7 @@
 <div id="rg-gallery">
   <div id="rg-stage">
-    <!-- ✅ сразу включаем лоадинг, чтобы на белом фоне не было “пусто” -->
-    <div id="rg-center" class="is-loading">
-      <span class="rg-loading" aria-hidden="true">loading...</span>
-
-      <!-- ✅ TAP (только если звук заблокирован) -->
-      <button class="rg-tap" type="button" aria-label="Tap for sound">
-        tap for sound
-      </button>
+    <div id="rg-center">
+      <span class="rg-loading is-on" aria-hidden="true">loading...</span>
 
       <div class="rg-nav">
         <button class="rg-btn rg-prev" type="button">⟨</button>
@@ -47,18 +41,20 @@
   display:flex;align-items:center;justify-content:center;
   position:relative;
   pointer-events:none;
-  contain: layout paint size;
+  contain:layout paint size;
 }
 
+/* медиа */
 .rg-main{
   max-width:100%;
   max-height:100%;
+  width:auto;height:auto;
   object-fit:contain;
   display:block;
   pointer-events:auto;
 }
 
-/* ✅ навигация как ты указала */
+/* ✅ навигация: видимая и кликабельная */
 .rg-nav{
   position:absolute;
   left:50%;
@@ -67,6 +63,7 @@
   display:flex;
   gap:25px;
   pointer-events:auto;
+  z-index:10; /* чтобы точно поверх картинки */
 }
 .rg-btn{
   font-size:1.6rem;
@@ -76,10 +73,10 @@
   cursor:pointer;
   padding:4px 8px;
   user-select:none;
-  -webkit-tap-highlight-color:transparent
+  -webkit-tap-highlight-color:transparent;
 }
 
-/* ✅ LOADING: mix-blend + 10px + weight 300 */
+/* ✅ LOADING: 10px, weight 300, mix-blend */
 .rg-loading{
   position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
   font-family:"SegoeUI","Segoe UI",-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif;
@@ -94,31 +91,7 @@
   user-select:none;
   display:none;
 }
-#rg-center.is-loading .rg-loading{display:block}
-
-/* ✅ TAP: тот же шрифт и size 10 */
-.rg-tap{
-  position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
-  z-index:5;
-  display:none;
-  pointer-events:auto;
-  cursor:pointer;
-
-  font-family:"SegoeUI","Segoe UI",-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif;
-  font-weight:300;
-  font-size:10px;
-  letter-spacing:.01em;
-  line-height:16px;
-  white-space:nowrap;
-  color:#000;
-
-  padding:6px 10px;
-  background:rgba(255,255,255,.95);
-  border:1px solid rgba(0,0,0,.14);
-  border-radius:999px;
-  -webkit-tap-highlight-color:transparent;
-}
-#rg-center.needs-tap .rg-tap{display:block}
+.rg-loading.is-on{display:block}
 </style>
 
 <script>
@@ -127,7 +100,7 @@
   if(!gallery||gallery.dataset.rgInit==="1")return;
   gallery.dataset.rgInit="1";
 
-  // ТВОИ ОРИГИНАЛЬНЫЕ ССЫЛКИ (как были)
+  // ТВОИ ОРИГИНАЛЬНЫЕ ССЫЛКИ
   const original=[
     "https://raw.githubusercontent.com/tsyomiki-collab/solitude/main/1.jpeg",
     "https://raw.githubusercontent.com/tsyomiki-collab/solitude/main/2.jpeg",
@@ -146,17 +119,14 @@
   const center=document.getElementById("rg-center");
   const prevBtn=gallery.querySelector(".rg-prev");
   const nextBtn=gallery.querySelector(".rg-next");
-  const tapBtn=center.querySelector(".rg-tap");
+  const loading=center.querySelector(".rg-loading");
   const nav=center.querySelector(".rg-nav");
 
-  function setLoading(on){ center.classList.toggle("is-loading", !!on); }
-  function setNeedsTap(on){ center.classList.toggle("needs-tap", !!on); }
+  function setLoading(on){ loading.classList.toggle("is-on", !!on); }
 
-  // ⚡️ Cloudinary fetch (сжимает/уменьшает на лету) — под ТВОИ размеры центра
+  // ⚡️ Cloudinary fetch (ускорение)
   const CLOUD="dmtnse4sz";
   const DPR=Math.max(1, Math.min(3, window.devicePixelRatio||1));
-
-  // ширина центра: min(92vw, 560px) + запас под ретину
   const centerPx = Math.min(560, Math.round(window.innerWidth * 0.92));
   const TARGET_W = Math.min(2000, Math.ceil(centerPx * DPR * 1.35));
 
@@ -164,195 +134,54 @@
     return `https://res.cloudinary.com/${CLOUD}/image/fetch/f_auto,q_auto:eco,fl_progressive,fl_lossy,w_${TARGET_W}/${encodeURIComponent(url)}`;
   }
 
-  // элементы (img; видео-логика есть)
-  const elements = original.map(u => ({ type:"img", src: cldFetch(u) }));
+  const elements = original.map(u => ({ src: cldFetch(u) }));
 
-  let index=0, currentVideo=null;
-  const nodeCache=new Map();   // key -> node
-  const readyCache=new Map();  // key -> Promise
+  let index=0, token=0;
+
+  const nodeCache=new Map();   // src -> Image
+  const readyCache=new Map();  // src -> Promise
   const ric = window.requestIdleCallback || ((cb)=>setTimeout(()=>cb({timeRemaining:()=>0}), 120));
 
-  function keyOf(el){ return el.type==="video" ? ("v:"+el.src) : ("i:"+el.src); }
-
   function clearCenterKeepUI(){
-    // не ломаем loading/tap/nav, чтобы не было “белого экрана со стрелками”
-    const loading = center.querySelector(".rg-loading");
-    const tap = center.querySelector(".rg-tap");
-    const nav = center.querySelector(".rg-nav");
-
+    const keepLoading=loading;
+    const keepNav=nav;
     center.innerHTML="";
-    if(loading) center.appendChild(loading);
-    if(tap) center.appendChild(tap);
-    if(nav) center.appendChild(nav);
+    center.appendChild(keepLoading);
+    center.appendChild(keepNav);
   }
 
   function ensureImg(src, priority){
-    const k="i:"+src;
-    if(nodeCache.has(k)) return nodeCache.get(k);
+    if(nodeCache.has(src)) return nodeCache.get(src);
 
     const img=new Image();
     img.className="rg-main";
     img.decoding="async";
-
-    // чуть быстрее на мобильных
     img.loading = priority === "high" ? "eager" : "lazy";
     try{ img.fetchPriority = priority || "auto"; }catch(e){}
-
     img.src=src;
-    nodeCache.set(k,img);
+
+    nodeCache.set(src,img);
     return img;
   }
 
-  function ensureVideo(el){
-    const k="v:"+el.src;
-    if(nodeCache.has(k)) return nodeCache.get(k);
+  function ensureReady(src){
+    if(readyCache.has(src)) return readyCache.get(src);
 
-    const v=document.createElement("video");
-    v.className="rg-main";
-
-    v.autoplay=true;
-    v.loop=true;
-    v.controls=false;
-
-    v.playsInline=true;
-    v.setAttribute("playsinline","");
-    v.setAttribute("webkit-playsinline","");
-    v.setAttribute("autoplay","");
-    v.setAttribute("loop","");
-
-    // ✅ стартуем muted, чтобы autoplay точно сработал, потом пытаемся включить звук
-    v.muted=true;
-    v.volume=0;
-    v.setAttribute("muted","");
-
-    v.preload="auto";
-    v.setAttribute("controlsList","nodownload noplaybackrate noremoteplayback");
-    v.setAttribute("disablePictureInPicture","");
-    v.setAttribute("disableRemotePlayback","");
-
-    if(el.poster) v.poster=el.poster;
-    v.src=el.src;
-
-    nodeCache.set(k,v);
-    return v;
-  }
-
-  function ensureReady(el){
-    const k=keyOf(el);
-    if(readyCache.has(k)) return readyCache.get(k);
-
-    const p = new Promise((resolve)=>{
-      if(el.type==="img"){
-        const img=ensureImg(el.src, "low");
-        const done = async ()=>{
-          if(img.decode){
-            try{ await img.decode(); }catch(e){}
-          }
-          resolve();
-        };
-        if(img.complete){ done(); return; }
-        img.onload=done;
-        img.onerror=done;
-      } else {
-        if(el.poster) ensureReady({type:"img", src: el.poster});
-        const v=document.createElement("video");
-        v.preload="metadata";
-        v.onloadedmetadata=v.onerror=()=>resolve();
-        v.src=el.src;
-      }
+    const p=new Promise((resolve)=>{
+      const img=ensureImg(src, "low");
+      const done=async ()=>{
+        if(img.decode){
+          try{ await img.decode(); }catch(e){}
+        }
+        resolve(true);
+      };
+      if(img.complete){ done(); return; }
+      img.onload=done;
+      img.onerror=done;
     });
 
-    readyCache.set(k,p);
+    readyCache.set(src,p);
     return p;
-  }
-
-  // ---- AUTOPLAY СО ЗВУКОМ + TAP если блок ----
-  let soundUnlocked=false;
-
-  async function tryPlayWithSound(v){
-    try{
-      v.muted=false;
-      v.volume=1;
-      await v.play();
-      return true;
-    }catch(e){
-      return false;
-    }
-  }
-
-  function armGlobalUnlock(){
-    const unlock = async ()=>{
-      soundUnlocked=true;
-      setNeedsTap(false);
-      if(!currentVideo) return;
-      await tryPlayWithSound(currentVideo);
-    };
-    gallery.addEventListener("pointerdown", unlock, {once:true, passive:true, capture:true});
-    gallery.addEventListener("touchstart", unlock, {once:true, passive:true, capture:true});
-    window.addEventListener("keydown", unlock, {once:true, capture:true});
-  }
-
-  async function startVideoSmart(v){
-    setNeedsTap(false);
-
-    // 1) если уже разлочили — пробуем сразу со звуком
-    if(soundUnlocked){
-      if(await tryPlayWithSound(v)) return true;
-    } else {
-      // 2) иногда браузер разрешает — пробуем
-      if(await tryPlayWithSound(v)) { soundUnlocked=true; return true; }
-    }
-
-    // 3) иначе запускаем muted, и показываем tap
-    try{
-      v.muted=true;
-      v.volume=0;
-      await v.play();
-    }catch(e){}
-
-    setNeedsTap(true);
-    armGlobalUnlock();
-    return false;
-  }
-
-  function stopCurrentVideo(){
-    if(!currentVideo) return;
-    try{ currentVideo.pause(); }catch(e){}
-    currentVideo=null;
-  }
-
-  function mount(el){
-    clearCenterKeepUI();
-    stopCurrentVideo();
-
-    // ✅ лоадер включаем СРАЗУ (на белом фоне будет видно “loading…”)
-    setLoading(true);
-    setNeedsTap(false);
-
-    if(el.type==="img"){
-      const img=ensureImg(el.src, "high");
-
-      const finish=()=>setLoading(false);
-      if(img.complete) finish();
-      else {
-        img.addEventListener("load", finish, {once:true});
-        img.addEventListener("error", finish, {once:true});
-      }
-
-      center.insertBefore(img, nav);
-      return;
-    }
-
-    const v=ensureVideo(el);
-    currentVideo=v;
-
-    const done=()=>setLoading(false);
-    v.addEventListener("playing", done, {once:true});
-    v.addEventListener("canplay", done, {once:true});
-    v.addEventListener("error", done, {once:true});
-
-    center.insertBefore(v, nav);
-    startVideoSmart(v);
   }
 
   function preloadAround(i){
@@ -360,27 +189,51 @@
     const prev=(i-1+n)%n;
     const next=(i+1)%n;
 
-    ensureReady(elements[i]);
-    ensureReady(elements[prev]);
-    ensureReady(elements[next]);
+    ensureReady(elements[i].src);
+    ensureReady(elements[prev].src);
+    ensureReady(elements[next].src);
 
     ric(()=>{
-      ensureReady(elements[(prev-1+n)%n]);
-      ensureReady(elements[(next+1)%n]);
+      ensureReady(elements[(prev-1+n)%n].src);
+      ensureReady(elements[(next+1)%n].src);
     });
   }
 
-  function show(i){
+  function mount(i){
+    clearCenterKeepUI();
+    setLoading(true);
+
+    const src=elements[i].src;
+    const img=ensureImg(src, "high");
+
+    const finish=()=>setLoading(false);
+    if(img.complete) finish();
+    else{
+      img.addEventListener("load", finish, {once:true});
+      img.addEventListener("error", finish, {once:true});
+    }
+
+    center.insertBefore(img, nav);
+  }
+
+  async function show(i){
+    const t=++token;
     const n=elements.length;
     if(i<0)i=n-1;
     if(i>=n)i=0;
     index=i;
 
-    // ✅ монтируем сразу (без ожидания), чтобы не было “пусто”
-    mount(elements[i]);
+    // ✅ лоадинг сразу (чтобы белый экран не пугал)
+    setLoading(true);
 
-    // ✅ прогрев соседних
     preloadAround(i);
+
+    // ✅ ждём декод (чуть меньше “миганий”)
+    await ensureReady(elements[i].src);
+    if(t!==token) return;
+
+    // ✅ показываем
+    mount(i);
   }
 
   prevBtn.onclick=()=>show(index-1);
@@ -394,21 +247,6 @@
     if(Math.abs(d)>40){ d<0?show(index+1):show(index-1); }
   },{passive:true});
 
-  // tap-кнопка (если видео появится и звук заблокирован)
-  tapBtn.addEventListener("click", async (e)=>{
-    e.preventDefault();
-    soundUnlocked=true;
-    setNeedsTap(false);
-    if(currentVideo) await tryPlayWithSound(currentVideo);
-  });
-
-  document.addEventListener("visibilitychange", ()=>{
-    if(document.hidden && currentVideo) currentVideo.pause();
-    else if(!document.hidden && currentVideo) startVideoSmart(currentVideo);
-  });
-
-  // старт
-  preloadAround(0);
   show(0);
 })();
 </script>
