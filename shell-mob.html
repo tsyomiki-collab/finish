@@ -3,11 +3,6 @@
     <div id="rg-center">
       <span class="rg-loading is-on" aria-hidden="true">loading...</span>
 
-      <!-- ✅ tap выглядит как в референсе, но текст лучше "tap for sound" -->
-      <button class="rg-tap" type="button" aria-label="Tap for sound">
-        tap for sound
-      </button>
-
       <div class="rg-nav">
         <button class="rg-btn rg-prev" type="button">⟨</button>
         <button class="rg-btn rg-next" type="button">⟩</button>
@@ -37,7 +32,7 @@
 #rg-gallery{position:fixed;inset:0;background:#fcfcfc;z-index:9999;overflow:hidden}
 #rg-stage{position:absolute;inset:0;top:-60px;display:flex;align-items:center;justify-content:center;pointer-events:none}
 
-/* ✅ ВИЗУАЛ как “раньше”: твой вариант с 86vw/520 и 62vh/560 */
+/* ✅ визуал как раньше */
 #rg-center{
   width:86vw;max-width:520px;
   height:62vh;max-height:560px;
@@ -50,14 +45,16 @@
 .rg-nav{position:absolute;left:50%;bottom:-65px;transform:translateX(-50%);display:flex;gap:25px;pointer-events:auto}
 .rg-btn{font-size:1.6rem;background:none;border:none;color:#666;cursor:pointer;padding:4px 8px;user-select:none;-webkit-tap-highlight-color:transparent}
 
-/* ✅ LOADING — как в “раньше” (blend difference, 10px) */
+/* ✅ LOADING с mix-blend (как ты хотела) */
 .rg-loading{
-  position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
+  position:absolute;
+  left:50%; top:50%;
+  transform:translate(-50%,-50%);
   font-family:"SegoeUI","Segoe UI",-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif;
   font-weight:300;
   font-size:10px;
   line-height:16px;
-  letter-spacing:.01em;
+  letter-spacing:0.01em;
   white-space:nowrap;
   color:#fff;
   mix-blend-mode:difference;
@@ -67,25 +64,6 @@
   display:none;
 }
 .rg-loading.is-on{display:block}
-
-/* ✅ TAP — 1:1 по виду как в твоём референс-коде */
-.rg-tap{
-  position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
-  z-index:5;display:none;pointer-events:auto;cursor:pointer;
-  font-family:"SegoeUI","Segoe UI",-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif;
-  font-weight:300;
-  font-size:8px;
-  line-height:16px;
-  letter-spacing:0.01em;
-  white-space:nowrap;
-  color:#000;
-  padding:6px 10px;
-  background:rgba(255,255,255,.95);
-  border:1px solid rgba(0,0,0,.14);
-  border-radius:999px;
-  -webkit-tap-highlight-color:transparent;
-}
-#rg-center.needs-tap .rg-tap{display:block}
 </style>
 
 <script>
@@ -97,9 +75,10 @@
   const center=document.getElementById("rg-center");
   const prevBtn=gallery.querySelector(".rg-prev");
   const nextBtn=gallery.querySelector(".rg-next");
-  const tapBtn=center.querySelector(".rg-tap");
+  const nav=center.querySelector(".rg-nav");
+  const loadingEl=center.querySelector(".rg-loading");
 
-  // ✅ материалы + wide флаги берём ИМЕННО из твоего shell-кода
+  // ✅ материалы + wide-флаги из shell
   const elements=[
     {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/shell/main/1.jpg",wide:true},
     {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/shell/main/4.jpg",wide:true},
@@ -122,8 +101,6 @@
   // ---- ускорение: Cloudinary fetch для GitHub raw ----
   const CLOUD="dmtnse4sz";
   const DPR=Math.max(1, Math.min(3, window.devicePixelRatio||1));
-
-  // center ширина: min(86vw, 520px) (потому что визуал “раньше”)
   const centerPx=Math.min(520, Math.round(window.innerWidth * 0.86));
 
   function targetW(el){
@@ -131,41 +108,31 @@
     const w = Math.ceil(base * DPR * 1.25);
     return Math.min(2000, Math.max(700, w));
   }
-
   function cldFetch(url, w){
     return `https://res.cloudinary.com/${CLOUD}/image/fetch/f_auto,q_auto:eco,fl_progressive,fl_lossy,w_${w}/${encodeURIComponent(url)}`;
   }
 
-  const fastElements = elements.map(el=>{
-    if(el.type!=="img") return el;
-    return { ...el, src: cldFetch(el.src, targetW(el)) };
-  });
+  const fastElements = elements.map(el=>({
+    ...el,
+    src: cldFetch(el.src, targetW(el))
+  }));
 
-  // ---- функционал как раньше: nodeCache + decode + preloadAround + no-white-screen ----
-  let index=0, token=0, currentVideo=null;
+  let index=0, token=0;
 
-  const nav=center.querySelector(".rg-nav");
-  const loadingEl=center.querySelector(".rg-loading");
-
-  const nodeCache=new Map();   // key -> node
-  const readyCache=new Map();  // key -> Promise
+  const nodeCache=new Map();   // src -> <img>
+  const readyCache=new Map();  // src -> Promise
   const ric = window.requestIdleCallback || ((cb)=>setTimeout(()=>cb({timeRemaining:()=>0}), 120));
 
   function setLoading(on){ loadingEl.classList.toggle("is-on", !!on); }
-  function setNeedsTap(on){ center.classList.toggle("needs-tap", !!on); }
 
   function clearCenterKeepUI(){
     center.innerHTML="";
     center.appendChild(loadingEl);
-    center.appendChild(tapBtn);
     center.appendChild(nav);
   }
 
-  function keyOf(el){ return el.type==="video" ? ("v:"+el.src) : ("i:"+el.src); }
-
   function ensureImg(src){
-    const k="i:"+src;
-    if(nodeCache.has(k)) return nodeCache.get(k);
+    if(nodeCache.has(src)) return nodeCache.get(src);
 
     const img=new Image();
     img.className="rg-main";
@@ -173,41 +140,30 @@
     img.loading="eager";
     img.src=src;
 
-    nodeCache.set(k,img);
+    nodeCache.set(src,img);
     return img;
   }
 
-  function ensureReady(el, priority){
-    const k=keyOf(el);
-    if(readyCache.has(k)) return readyCache.get(k);
+  function ensureReady(src, priority){
+    if(readyCache.has(src)) return readyCache.get(src);
+
+    const img=ensureImg(src);
+    try{ img.fetchPriority = priority || "low"; }catch(e){}
 
     const p=new Promise(async (resolve)=>{
-      // тут у нас только img (в shell наборе видео нет) — но оставляем универсальность
-      if(el.type==="img"){
-        const img=ensureImg(el.src);
-        try{ img.fetchPriority = priority || "low"; }catch(e){}
+      const done = async ()=>{
+        if(img.decode){
+          try{ await img.decode(); }catch(e){}
+        }
+        resolve(true);
+      };
 
-        const done = async ()=>{
-          if(img.decode){
-            try{ await img.decode(); }catch(e){}
-          }
-          resolve(true);
-        };
-
-        if(img.complete){ await done(); return; }
-        img.onload=done;
-        img.onerror=done;
-        return;
-      }
-
-      // если потом добавишь видео — будет готово
-      const v=document.createElement("video");
-      v.preload="metadata";
-      v.onloadedmetadata=v.onerror=()=>resolve(true);
-      v.src=el.src;
+      if(img.complete){ await done(); return; }
+      img.onload=done;
+      img.onerror=done;
     });
 
-    readyCache.set(k,p);
+    readyCache.set(src,p);
     return p;
   }
 
@@ -215,24 +171,18 @@
     const n=fastElements.length;
     const idx=(k)=> (k+n)%n;
 
-    ensureReady(fastElements[idx(i)],   "high");
-    ensureReady(fastElements[idx(i-1)], "low");
-    ensureReady(fastElements[idx(i+1)], "low");
+    const cur  = fastElements[idx(i)].src;
+    const prev = fastElements[idx(i-1)].src;
+    const next = fastElements[idx(i+1)].src;
+
+    ensureReady(cur,  "high");
+    ensureReady(prev, "low");
+    ensureReady(next, "low");
 
     ric(()=>{
-      ensureReady(fastElements[idx(i-2)], "low");
-      ensureReady(fastElements[idx(i+2)], "low");
+      ensureReady(fastElements[idx(i-2)].src, "low");
+      ensureReady(fastElements[idx(i+2)].src, "low");
     });
-  }
-
-  async function mount(el){
-    clearCenterKeepUI();
-    setNeedsTap(false);
-
-    // shell — только изображения, поэтому просто монтируем img
-    const img=ensureImg(el.src);
-    center.insertBefore(img, nav);
-    setLoading(false);
   }
 
   async function show(i){
@@ -245,10 +195,13 @@
     setLoading(true);
     preloadAround(i);
 
-    await ensureReady(fastElements[i], "high");
+    const src = fastElements[i].src;
+    await ensureReady(src, "high");
     if(t!==token) return;
 
-    await mount(fastElements[i]);
+    clearCenterKeepUI();
+    center.insertBefore(ensureImg(src), nav);
+    setLoading(false);
   }
 
   prevBtn.onclick=()=>show(index-1);
@@ -260,9 +213,6 @@
     const d=e.changedTouches[0].clientX-startX;
     if(Math.abs(d)>40){ d<0?show(index+1):show(index-1) }
   },{passive:true});
-
-  // ✅ в этом наборе видео нет — tap не нужен, но оставляем совместимость:
-  tapBtn.addEventListener("click",(e)=>{ e.preventDefault(); setNeedsTap(false); });
 
   preloadAround(0);
   show(0);
