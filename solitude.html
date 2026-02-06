@@ -53,8 +53,9 @@
   flex-wrap:nowrap;
 }
 
+/* боковые слоты */
 .rg-sideSlot{
-  position:relative; /* ✅ для loading */
+  position:relative;
   width:360px;
   height:330px;
   display:flex;
@@ -66,7 +67,7 @@
 }
 
 .rg-centerSlot{
-  position:relative; /* ✅ для loading */
+  position:relative;
   width:min(1180px, 70vw);
   height:735px;
   display:flex;
@@ -92,6 +93,11 @@
   transform-origin:center center;
 }
 
+/* ✅ КЛЮЧ: когда центр wide:true — боковые СЛОТЫ вообще не существуют */
+#rg-gallery.rg-wide .rg-sideSlot{
+  display:none;
+}
+
 /* loading... (с blend mode) */
 .rg-loading{
   position:absolute;
@@ -101,7 +107,7 @@
 
   font-family:"SegoeUI","Segoe UI",-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif;
   font-weight:300;
-  font-size:14px;        /* подобрала */
+  font-size:14px;
   letter-spacing:.01em;
   line-height:16px;
 
@@ -115,7 +121,6 @@
 }
 .rg-loading.is-on{ display:block; }
 
-/* пока грузится — прячем изображение (чтобы не мелькала старая) */
 .rg-side.is-loading,
 .rg-main.is-loading{ opacity:0; }
 
@@ -211,11 +216,6 @@
     if(l) l.classList.toggle("is-on", !!on);
   }
 
-  function setSidesHidden(h){
-    left.style.visibility  = h ? "hidden" : "visible";
-    right.style.visibility = h ? "hidden" : "visible";
-  }
-
   function markSide(imgEl, item){
     imgEl.classList.toggle("rg-wide", !!(item && item.wide));
   }
@@ -229,8 +229,14 @@
     imgEl.loading = "eager";
     imgEl.fetchPriority = "low";
 
-    imgEl.onload = ()=>{ imgEl.classList.remove("is-loading"); setLoading(slot,false); };
-    imgEl.onerror= ()=>{ imgEl.classList.remove("is-loading"); setLoading(slot,false); };
+    imgEl.onload = ()=>{
+      imgEl.classList.remove("is-loading");
+      setLoading(slot,false);
+    };
+    imgEl.onerror= ()=>{
+      imgEl.classList.remove("is-loading");
+      setLoading(slot,false);
+    };
 
     imgEl.src = item?.src || "";
     markSide(imgEl, item);
@@ -238,6 +244,8 @@
 
   function showCenter(item){
     setLoading(center, true);
+
+    // оставляем один-единственный лоадер в центре, без наслоений
     center.innerHTML = '<span class="rg-loading is-on" aria-hidden="true">loading...</span>';
 
     const img = document.createElement("img");
@@ -246,11 +254,30 @@
     img.loading = "eager";
     img.fetchPriority = "high";
 
-    img.onload = ()=>{ img.classList.remove("is-loading"); setLoading(center,false); };
-    img.onerror= ()=>{ img.classList.remove("is-loading"); setLoading(center,false); };
+    img.onload = ()=>{
+      img.classList.remove("is-loading");
+      setLoading(center,false);
+    };
+    img.onerror= ()=>{
+      img.classList.remove("is-loading");
+      setLoading(center,false);
+    };
 
     img.src = item.src;
     center.appendChild(img);
+  }
+
+  function hideSidesCompletely(h){
+    // ✅ убираем боковые целиком (и их лоадеры тоже)
+    gallery.classList.toggle("rg-wide", !!h);
+
+    if(h){
+      // на всякий случай выключаем боковые loader'ы (чтобы никогда не мелькали)
+      setLoading(left.parentElement, false);
+      setLoading(right.parentElement, false);
+      left.classList.remove("is-loading");
+      right.classList.remove("is-loading");
+    }
   }
 
   async function show(i){
@@ -263,26 +290,39 @@
     const p = (i - 1 + elements.length) % elements.length;
     const n = (i + 1) % elements.length;
 
-    // сразу показываем loading
-    setLoading(left.parentElement, true);
-    setLoading(right.parentElement, true);
+    // ✅ сначала решаем, надо ли скрыть боковые (иначе они успеют показать свой loading)
+    const isWide = !!elements[i].wide;
+    hideSidesCompletely(isWide);
+
+    // лоадер центра всегда показываем
     setLoading(center, true);
 
-    await Promise.all([
-      preload(elements[i].src),
-      preload(elements[p].src),
-      preload(elements[n].src)
-    ]);
+    // если боковые скрыты — не включаем их лоадеры вообще
+    if(!isWide){
+      setLoading(left.parentElement, true);
+      setLoading(right.parentElement, true);
+    }else{
+      setLoading(left.parentElement, false);
+      setLoading(right.parentElement, false);
+    }
+
+    // подгружаем текущую, а боковые — только если они реально будут видны
+    const tasks = [preload(elements[i].src)];
+    if(!isWide){
+      tasks.push(preload(elements[p].src), preload(elements[n].src));
+    }
+
+    await Promise.all(tasks);
     if(t !== token) return;
 
-    setSide(left,  elements[p]);
-    setSide(right, elements[n]);
+    if(!isWide){
+      setSide(left,  elements[p]);
+      setSide(right, elements[n]);
+    }
+
     showCenter(elements[i]);
 
-    // правило: если центральная wide:true — скрываем боковые
-    setSidesHidden(!!elements[i].wide);
-
-    // второе кольцо — в фоне
+    // второе кольцо — в фоне (можно всегда, но смысла меньше когда wide)
     const p2 = (p - 1 + elements.length) % elements.length;
     const n2 = (n + 1) % elements.length;
     const bg = ()=>{
