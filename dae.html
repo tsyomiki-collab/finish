@@ -8,7 +8,8 @@
     </div>
 
     <div id="rg-center" class="rg-centerSlot">
-      <span class="rg-loading is-on">loading...</span>
+      <!-- глобальный лоадер центра (всегда существует) -->
+      <span class="rg-loading rg-centerLoading is-on">loading...</span>
     </div>
 
     <div class="rg-sideSlot">
@@ -20,23 +21,11 @@
   <button class="rg-btn rg-next" type="button" aria-label="Next">⟩</button>
 </div>
 
-<!-- прогрев доменов под картинки -->
+<!-- прогрев соединений (это реально помогает) -->
 <link rel="dns-prefetch" href="//raw.githubusercontent.com">
 <link rel="preconnect" href="https://raw.githubusercontent.com" crossorigin>
 
 <style>
-@font-face{
-  font-family:"SegoeUI";
-  src:
-    local("Segoe UI Light"),
-    url("https://c.s-microsoft.com/static/fonts/segoe-ui/west-european/light/latest.woff2") format("woff2"),
-    url("https://c.s-microsoft.com/static/fonts/segoe-ui/west-european/light/latest.woff") format("woff"),
-    url("https://c.s-microsoft.com/static/fonts/segoe-ui/west-european/light/latest.ttf") format("truetype");
-  font-weight:300;
-  font-style:normal;
-  font-display:swap;
-}
-
 #rg-gallery{
   position:fixed;
   inset:0;
@@ -129,17 +118,22 @@
   transform:translate(-50%,-50%);
   font-family:"SegoeUI","Segoe UI",-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif;
   font-weight:300;
-  font-size:10px;
+  font-size:13px;
   letter-spacing:.01em;
-  line-height:14px;
+  line-height:16px;
+
   color:#fff;
   mix-blend-mode:difference;
   opacity:.9;
+
   pointer-events:none;
   user-select:none;
   display:none;
 }
 .rg-loading.is-on{ display:block; }
+
+/* центр-лоадер всегда сверху всего внутри центра */
+.rg-centerLoading{ z-index:3; }
 
 .rg-side.is-loading,
 .rg-main.is-loading{ opacity:0; }
@@ -176,31 +170,34 @@
   const left   = document.getElementById("rg-left");
   const right  = document.getElementById("rg-right");
   const center = document.getElementById("rg-center");
+  const centerLoading = center.querySelector(".rg-centerLoading");
   const prevBtn = gallery.querySelector(".rg-prev");
   const nextBtn = gallery.querySelector(".rg-next");
-  if(!left || !right || !center || !prevBtn || !nextBtn) return;
+  if(!left || !right || !center || !centerLoading || !prevBtn || !nextBtn) return;
 
   const cache = new Map();
 
-  function setLoading(slot, on){
-    const l = slot.querySelector(".rg-loading");
-    if(l) l.classList.toggle("is-on", on);
-  }
-
-  function preload(url){
+  function preload(url, priority){
     if(!url) return Promise.resolve(false);
     if(cache.has(url)) return cache.get(url);
 
     const p = new Promise(resolve=>{
       const img = new Image();
       img.decoding = "async";
-      img.onload  = ()=>resolve(true);
-      img.onerror = ()=>resolve(false);
+      // fetchPriority работает не везде, но где работает — приятно ускоряет
+      try { if(priority) img.fetchPriority = priority; } catch(e){}
+      img.onload  = () => resolve(true);
+      img.onerror = () => resolve(false);
       img.src = url;
     });
 
     cache.set(url, p);
     return p;
+  }
+
+  function setLoading(slotEl, on){
+    const l = slotEl.querySelector(".rg-loading");
+    if(l) l.classList.toggle("is-on", on);
   }
 
   function setSide(imgEl, src){
@@ -209,40 +206,46 @@
     imgEl.classList.add("is-loading");
     imgEl.decoding = "async";
     imgEl.loading = "eager";
-    imgEl.fetchPriority = "low";
+    try { imgEl.fetchPriority = "low"; } catch(e){}
 
-    imgEl.onload = ()=>{ 
-      imgEl.classList.remove("is-loading"); 
-      setLoading(slot,false); 
+    imgEl.onload = ()=>{
+      imgEl.classList.remove("is-loading");
+      setLoading(slot,false);
     };
-    imgEl.onerror = ()=>{ 
-      imgEl.classList.add("is-loading");
-      setLoading(slot,true);
+    imgEl.onerror = ()=>{
+      imgEl.classList.remove("is-loading");
+      // если картинка не загрузилась — всё равно убираем лоадер, чтобы не висел вечно
+      setLoading(slot,false);
     };
 
     imgEl.src = src;
   }
 
-  function showCenter(el){
-    setLoading(center, true);
-    center.innerHTML = '<span class="rg-loading is-on">loading...</span>';
+  function showCenter(src){
+    // Глобальный лоадер центра: включаем ВСЕГДА, даже если центр пустой
+    centerLoading.classList.add("is-on");
+
+    // удаляем прошлую картинку, но НЕ трогаем centerLoading
+    const old = center.querySelector("img.rg-main, video.rg-main");
+    if(old) old.remove();
 
     const img = document.createElement("img");
     img.className = "rg-main is-loading";
     img.decoding = "async";
     img.loading = "eager";
-    img.fetchPriority = "high";
+    try { img.fetchPriority = "high"; } catch(e){}
 
-    img.onload = ()=>{ 
-      img.classList.remove("is-loading"); 
-      setLoading(center,false); 
+    img.onload = ()=>{
+      img.classList.remove("is-loading");
+      centerLoading.classList.remove("is-on");
     };
-    img.onerror = ()=>{ 
-      img.classList.add("is-loading");
-      setLoading(center,true); 
+    img.onerror = ()=>{
+      img.classList.remove("is-loading");
+      // если не загрузилось — оставляем текст? обычно лучше убрать, чтобы не “вечный лоадинг”
+      centerLoading.classList.remove("is-on");
     };
 
-    img.src = el.src;
+    img.src = src;
     center.appendChild(img);
   }
 
@@ -256,20 +259,25 @@
     const prev = (i - 1 + elements.length) % elements.length;
     const next = (i + 1) % elements.length;
 
+    // моментально показываем лоадер (чтобы не было белого пустого экрана)
+    centerLoading.classList.add("is-on");
+
+    // грузим текущую + соседние (с приоритетами)
     await Promise.all([
-      preload(elements[i].src),
-      preload(elements[prev].src),
-      preload(elements[next].src)
+      preload(elements[i].src, "high"),
+      preload(elements[prev].src, "low"),
+      preload(elements[next].src, "low")
     ]);
 
     if(t !== token) return;
 
     setSide(left,  elements[prev].src);
     setSide(right, elements[next].src);
-    showCenter(elements[i]);
+    showCenter(elements[i].src);
 
-    preload(elements[(prev - 1 + elements.length) % elements.length].src);
-    preload(elements[(next + 1) % elements.length].src);
+    // второе кольцо — в фоне
+    preload(elements[(prev - 1 + elements.length) % elements.length].src, "low");
+    preload(elements[(next + 1) % elements.length].src, "low");
   }
 
   prevBtn.addEventListener("click", ()=>show(index - 1));
@@ -284,6 +292,11 @@
     };
     document.addEventListener("keydown", window.__rgKeyHandler);
   }
+
+  // “быстрый старт”: прогреваем первые 2-3 сразу
+  preload(elements[0]?.src, "high");
+  preload(elements[1]?.src, "low");
+  preload(elements[2]?.src, "low");
 
   show(0);
 })();
