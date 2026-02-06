@@ -37,7 +37,7 @@
 #rg-gallery{position:fixed;inset:0;background:#fcfcfc;z-index:9999;overflow:hidden}
 #rg-stage{position:absolute;inset:0;top:-60px;display:flex;align-items:center;justify-content:center;pointer-events:none}
 
-/* ✅ больше, но отступы/стрелки не трогаем */
+/* как в первом: центр + те же отступы/стрелки */
 #rg-center{
   width:86vw;max-width:520px;
   height:62vh;max-height:560px;
@@ -52,7 +52,7 @@
 .rg-nav{position:absolute;left:50%;bottom:-65px;transform:translateX(-50%);display:flex;gap:25px;pointer-events:auto}
 .rg-btn{font-size:1.6rem;background:none;border:none;color:#666;cursor:pointer;padding:4px 8px;user-select:none;-webkit-tap-highlight-color:transparent}
 
-/* ✅ LOADING (mix-blend, SegoeUI 300, 10) */
+/* LOADING (mix-blend, SegoeUI 300, size 10) */
 .rg-loading{
   position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
   font-family:"SegoeUI","Segoe UI",-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif;
@@ -62,7 +62,7 @@
 }
 .rg-loading.is-on{display:block}
 
-/* ✅ TAP pill */
+/* TAP pill */
 .rg-tap{
   position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
   z-index:5;
@@ -113,7 +113,7 @@
     }
   ];
 
-  // ---------- УСКОРЕНИЕ: Cloudinary fetch для картинок/постеров ----------
+  // ---------- УСКОРЕНИЕ (как во втором): Cloudinary fetch для img/poster ----------
   const CLOUD="dmtnse4sz";
   const DPR=Math.max(1, Math.min(3, window.devicePixelRatio||1));
   const centerPx = Math.min(520, Math.round(window.innerWidth * 0.86));
@@ -133,6 +133,7 @@
   // ---------- STATE / CACHE ----------
   let index=0, token=0, currentVideo=null, soundUnlocked=false;
 
+  // (как в первом) кэш нод + “готовности”
   const nodeCache = new Map();   // key -> node
   const readyCache = new Map();  // key -> Promise
   const ric = window.requestIdleCallback || ((cb)=>setTimeout(()=>cb({timeRemaining:()=>0}), 120));
@@ -149,6 +150,7 @@
     center.appendChild(nav);
   }
 
+  // ---------- IMG (как в первом): один <img> на src + decode ----------
   function ensureImg(src){
     const k="i:"+src;
     if(nodeCache.has(k)) return nodeCache.get(k);
@@ -163,6 +165,7 @@
     return img;
   }
 
+  // ---------- VIDEO (НЕ МЕНЯЕМ функционал) ----------
   function ensureVideo(el){
     const k="v:"+el.src;
     if(nodeCache.has(k)) return nodeCache.get(k);
@@ -196,28 +199,30 @@
     return v;
   }
 
-  // ✅ “готовность” чтобы loading был виден и не было белого экрана
+  // ---------- READY (img: load+decode как в первом, video: metadata как во втором) ----------
   function ensureReady(el, priority){
     const k=keyOf(el);
     if(readyCache.has(k)) return readyCache.get(k);
 
-    const p=new Promise((resolve)=>{
+    const p=new Promise(async (resolve)=>{
       if(el.type==="img"){
         const img=ensureImg(el.src);
         try{ img.fetchPriority = priority || "low"; }catch(e){}
 
         const done = async ()=>{
-          if(img.decode){ try{ await img.decode(); }catch(e){} }
+          if(img.decode){
+            try{ await img.decode(); }catch(e){}
+          }
           resolve(true);
         };
 
-        if(img.complete){ done(); return; }
+        if(img.complete){ await done(); return; }
         img.onload=done;
         img.onerror=done;
         return;
       }
 
-      // video: прогреваем постер и ждём metadata
+      // video: прогреваем постер и ждём metadata (как было)
       if(el.poster) ensureReady({type:"img", src: el.poster}, "low");
 
       const v=document.createElement("video");
@@ -232,19 +237,19 @@
 
   function preloadAround(i){
     const n=elements.length;
-    const prev=(i-1+n)%n;
-    const next=(i+1)%n;
+    const idx=(k)=> (k+n)%n;
 
-    ensureReady(elements[i],   "high");
-    ensureReady(elements[prev],"low");
-    ensureReady(elements[next],"low");
+    ensureReady(elements[idx(i)],   "high");
+    ensureReady(elements[idx(i-1)], "low");
+    ensureReady(elements[idx(i+1)], "low");
 
     ric(()=>{
-      ensureReady(elements[(prev-1+n)%n],"low");
-      ensureReady(elements[(next+1)%n],"low");
+      ensureReady(elements[idx(i-2)], "low");
+      ensureReady(elements[idx(i+2)], "low");
     });
   }
 
+  // ---------- VIDEO SOUND LOGIC (НЕ МЕНЯЕМ) ----------
   async function tryPlayWithSound(v){
     v.muted=false;
     v.volume=1;
@@ -287,6 +292,7 @@
     currentVideo=null;
   }
 
+  // ---------- MOUNT (img = как в первом, video = как во втором) ----------
   async function mount(el){
     clearCenterKeepUI();
     stopCurrentVideo();
@@ -296,10 +302,10 @@
       setLoading(true);
 
       const img=ensureImg(el.src);
-      const done=()=>setLoading(false);
+      const hide=()=>setLoading(false);
 
-      if(img.complete){ done(); }
-      else { img.onload=done; img.onerror=done; }
+      if(img.complete){ hide(); }
+      else { img.onload=hide; img.onerror=hide; }
 
       center.insertBefore(img, nav);
       return;
@@ -320,6 +326,7 @@
     await startVideoSmart(v);
   }
 
+  // ---------- SHOW (поведение как в первом: loading сразу + wait ready + mount без белого) ----------
   async function show(i){
     const t=++token;
     const n=elements.length;
@@ -338,7 +345,7 @@
     await mount(elements[i]);
   }
 
-  // tap = попытка включить звук
+  // tap = попытка включить звук (НЕ МЕНЯЕМ)
   tapBtn.addEventListener("click",(e)=>{
     e.preventDefault();
     unlockSoundNow();
@@ -356,7 +363,7 @@
     if(Math.abs(d)>40){ d<0?show(index+1):show(index-1); }
   },{passive:true});
 
-  // любой первый жест тоже разлочит звук
+  // любой первый жест тоже разлочит звук (НЕ МЕНЯЕМ)
   (function armGlobalUnlock(){
     const unlock=()=>{ unlockSoundNow(); cleanup(); };
     const cleanup=()=>{
