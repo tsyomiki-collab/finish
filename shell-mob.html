@@ -1,0 +1,188 @@
+<div id="rg-gallery">
+  <div id="rg-stage">
+    <div id="rg-center">
+      <div class="rg-nav">
+        <button class="rg-btn rg-prev" type="button">⟨</button>
+        <button class="rg-btn rg-next" type="button">⟩</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<link rel="dns-prefetch" href="//raw.githubusercontent.com">
+<link rel="preconnect" href="https://raw.githubusercontent.com" crossorigin>
+<link rel="dns-prefetch" href="//res.cloudinary.com">
+<link rel="preconnect" href="https://res.cloudinary.com" crossorigin>
+
+<style>
+#rg-gallery{position:fixed;inset:0;background:#fcfcfc;z-index:9999;overflow:hidden}
+#rg-stage{position:absolute;inset:0;top:-60px;display:flex;align-items:center;justify-content:center;pointer-events:none}
+#rg-center{width:74vw;max-width:430px;height:50vh;max-height:460px;display:flex;align-items:center;justify-content:center;position:relative;pointer-events:none}
+.rg-main{max-width:100%;max-height:100%;object-fit:contain;display:block;pointer-events:auto}
+.rg-nav{position:absolute;left:50%;bottom:-65px;transform:translateX(-50%);display:flex;gap:25px;pointer-events:auto}
+.rg-btn{font-size:1.6rem;background:none;border:none;color:#666;cursor:pointer;padding:4px 8px;user-select:none;-webkit-tap-highlight-color:transparent}
+</style>
+
+<script>
+(function(){
+  const gallery=document.getElementById("rg-gallery");
+  if(!gallery||gallery.dataset.rgInit==="1")return;
+  gallery.dataset.rgInit="1";
+
+  // ---- ТВОИ ЭЛЕМЕНТЫ (как были) ----
+  const elements=[
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/shell/main/1.jpg",wide:true},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/shell/main/4.jpg",wide:true},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/shell/main/2.jpg"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/shell/main/3.jpg"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/shell/main/5.jpg"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/shell/main/7.jpg"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/shell/main/6.jpg",wide:true},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/shell/main/8.jpg"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/shell/main/10.jpg"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/shell/main/9.jpg",wide:true},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/shell/main/11.png"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/shell/main/12.jpg",wide:true},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/shell/main/13.jpeg"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/shell/main/14.jpeg"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/shell/main/15.jpeg"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/shell/main/16.jpeg"}
+  ];
+
+  // ---- УСКОРЕНИЕ: Cloudinary fetch для GitHub raw ----
+  // (делает картинки легче: resize + auto format + auto quality)
+  const CLOUD="dmtnse4sz";
+  const DPR=Math.max(1, Math.min(3, window.devicePixelRatio||1));
+
+  // у тебя max-width 430px, но для wide можно дать чуть шире
+  function targetW(el){
+    const base = el.wide ? 900 : 650;               // логика под твой wide:true
+    const w = Math.ceil(base * DPR * 1.2);          // запас под ретину/масштаб
+    return Math.min(1600, Math.max(520, w));
+  }
+
+  function cldFetch(url, w){
+    // fl_progressive — прогрессивная загрузка jpg
+    // q_auto:eco — сильнее сжатие (обычно визуально ок, но сильно быстрее)
+    return `https://res.cloudinary.com/${CLOUD}/image/fetch/f_auto,q_auto:eco,fl_progressive,w_${w}/${encodeURIComponent(url)}`;
+  }
+
+  // Собираем "быстрые" элементы (src заменён на Cloudinary)
+  const fastElements = elements.map(el=>{
+    if(el.type!=="img") return el;
+    return { ...el, src: cldFetch(el.src, targetW(el)) };
+  });
+
+  // ---- ДАЛЬШЕ: быстрый показ (кэш нод + decode + умный прелоад) ----
+  let index=0, token=0, currentVideo=null;
+  const center=document.getElementById("rg-center");
+  const prevBtn=gallery.querySelector(".rg-prev");
+  const nextBtn=gallery.querySelector(".rg-next");
+
+  const nodeCache=new Map();   // key -> node
+  const readyCache=new Map();  // key -> Promise
+  const ric = window.requestIdleCallback || ((cb)=>setTimeout(()=>cb({timeRemaining:()=>0}), 120));
+
+  function keyOf(el){ return el.type==="video" ? ("v:"+el.src) : ("i:"+el.src); }
+
+  function clearCenter(){
+    const nav=center.querySelector(".rg-nav");
+    center.innerHTML="";
+    if(nav) center.appendChild(nav);
+  }
+
+  function ensureImg(src){
+    const k="i:"+src;
+    if(nodeCache.has(k)) return nodeCache.get(k);
+
+    const img=new Image();
+    img.className="rg-main";
+    img.decoding="async";
+    img.loading="eager";
+    img.src=src;
+
+    // приоритет (где поддерживается)
+    try{ img.fetchPriority="high"; }catch(e){}
+
+    nodeCache.set(k,img);
+    return img;
+  }
+
+  function ensureReady(el){
+    const k=keyOf(el);
+    if(readyCache.has(k)) return readyCache.get(k);
+
+    const p = new Promise((resolve)=>{
+      if(el.type==="img"){
+        const img=ensureImg(el.src);
+        const done = async ()=>{
+          if(img.decode){
+            try{ await img.decode(); }catch(e){}
+          }
+          resolve();
+        };
+        if(img.complete){ done(); return; }
+        img.onload=done;
+        img.onerror=done;
+      } else {
+        // видео тут нет, но оставим на будущее
+        resolve();
+      }
+    });
+
+    readyCache.set(k,p);
+    return p;
+  }
+
+  function showCenter(el){
+    clearCenter();
+    if(currentVideo){ try{ currentVideo.pause(); }catch(e){} currentVideo=null; }
+
+    const img = ensureImg(el.src);
+    center.appendChild(img);
+  }
+
+  function preloadAround(i){
+    const n=fastElements.length;
+    const prev=(i-1+n)%n;
+    const next=(i+1)%n;
+
+    ensureReady(fastElements[i]);
+    ensureReady(fastElements[prev]);
+    ensureReady(fastElements[next]);
+
+    ric(()=>{
+      ensureReady(fastElements[(prev-1+n)%n]);
+      ensureReady(fastElements[(next+1)%n]);
+    });
+  }
+
+  async function show(i){
+    const t=++token;
+    const n=fastElements.length;
+
+    if(i<0)i=n-1;
+    if(i>=n)i=0;
+    index=i;
+
+    preloadAround(i);
+    await ensureReady(fastElements[i]);
+    if(t!==token) return;
+
+    showCenter(fastElements[i]);
+  }
+
+  prevBtn.onclick=()=>show(index-1);
+  nextBtn.onclick=()=>show(index+1);
+
+  let startX=0;
+  gallery.addEventListener("touchstart",e=>{startX=e.touches[0].clientX},{passive:true});
+  gallery.addEventListener("touchend",e=>{
+    const d=e.changedTouches[0].clientX-startX;
+    if(Math.abs(d)>40){ d<0?show(index+1):show(index-1) }
+  },{passive:true});
+
+  preloadAround(0);
+  show(0);
+})();
+</script>
