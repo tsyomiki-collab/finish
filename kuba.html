@@ -3,12 +3,16 @@
 
   <div class="rg-wrapper">
     <div class="rg-sideSlot">
+      <span class="rg-loading" aria-hidden="true">loading...</span>
       <img id="rg-left" class="rg-side" alt="">
     </div>
 
-    <div id="rg-center" class="rg-centerSlot"></div>
+    <div id="rg-center" class="rg-centerSlot">
+      <span class="rg-loading is-on" aria-hidden="true">loading...</span>
+    </div>
 
     <div class="rg-sideSlot">
+      <span class="rg-loading" aria-hidden="true">loading...</span>
       <img id="rg-right" class="rg-side" alt="">
     </div>
   </div>
@@ -17,6 +21,18 @@
 </div>
 
 <style>
+@font-face{
+  font-family:"SegoeUI";
+  src:
+    local("Segoe UI Light"),
+    url("https://c.s-microsoft.com/static/fonts/segoe-ui/west-european/light/latest.woff2") format("woff2"),
+    url("https://c.s-microsoft.com/static/fonts/segoe-ui/west-european/light/latest.woff") format("woff"),
+    url("https://c.s-microsoft.com/static/fonts/segoe-ui/west-european/light/latest.ttf") format("truetype");
+  font-weight:300;
+  font-style:normal;
+  font-display:swap;
+}
+
 #rg-gallery{
   position:fixed;
   inset:0;
@@ -38,6 +54,7 @@
 }
 
 .rg-sideSlot{
+  position:relative; /* ✅ loader */
   width:360px;
   height:330px;
   display:flex;
@@ -49,6 +66,7 @@
 }
 
 .rg-centerSlot{
+  position:relative; /* ✅ loader + overlay */
   width:min(1180px, 70vw);
   height:735px;
   display:flex;
@@ -56,7 +74,6 @@
   justify-content:center;
   overflow:hidden;
   flex:0 0 auto;
-  position:relative;
 }
 
 .rg-main,
@@ -83,16 +100,63 @@
   background:transparent;
 }
 
-/* прозрачный слой для “tap to screen” */
+/* loading... (mix blend) */
+.rg-loading{
+  position:absolute;
+  left:50%;
+  top:50%;
+  transform:translate(-50%,-50%);
+
+  font-family:"SegoeUI","Segoe UI",-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif;
+  font-weight:300;
+  font-size:14px;
+  letter-spacing:.01em;
+  line-height:16px;
+
+  color:#fff;
+  mix-blend-mode:difference;
+  opacity:.9;
+
+  pointer-events:none;
+  user-select:none;
+  display:none;
+}
+.rg-loading.is-on{ display:block; }
+
+/* пока грузится — прячем контент */
+.rg-side.is-loading,
+.rg-main.is-loading,
+.rg-video.is-loading{ opacity:0; }
+
+/* overlay клика для звука */
 .rg-unmute{
   position:absolute;
   inset:0;
-  cursor:pointer;
   display:none;
+  align-items:center;
+  justify-content:center;
+  cursor:pointer;
+  user-select:none;
+  -webkit-tap-highlight-color:transparent;
   z-index:2;
 }
-.rg-unmute.is-on{ display:block; }
+.rg-unmute.is-on{ display:flex; }
 
+.rg-unmute span{
+  padding:12px 16px;
+  font-family:"SegoeUI","Segoe UI",-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif;
+  font-weight:300;
+  font-size:15px;
+  letter-spacing:.01em;
+  line-height:18px;
+
+  border:1px solid rgba(0,0,0,.12);
+  background:rgba(255,255,255,.92);
+  border-radius:999px;
+  color:#111;
+}
+
+/* кнопки */
 .rg-btn{
   position:fixed;
   top:50%;
@@ -117,6 +181,15 @@
 }
 .rg-prev{ left:80px; }
 .rg-next{ right:80px; }
+
+@media (max-width:820px){
+  .rg-sideSlot{ display:none; }
+  .rg-centerSlot{ width:92vw; }
+}
+
+/* меньше лагов */
+.rg-centerSlot, .rg-sideSlot { contain: layout paint size; }
+.rg-main { will-change: contents; }
 </style>
 
 <script>
@@ -139,20 +212,45 @@
     {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/kuba/main/witch44%20Kopie-2.jpg"}
   ];
 
-  let index = 0;
+  let index = 0, token = 0;
 
-  const left   = document.getElementById("rg-left");
-  const right  = document.getElementById("rg-right");
-  const center = document.getElementById("rg-center");
+  const left    = document.getElementById("rg-left");
+  const right   = document.getElementById("rg-right");
+  const center  = document.getElementById("rg-center");
   const prevBtn = gallery.querySelector(".rg-prev");
   const nextBtn = gallery.querySelector(".rg-next");
+  if(!left || !right || !center || !prevBtn || !nextBtn) return;
+
+  const cache = new Map();
+  let activeVideo = null;
 
   function thumbSrc(item){
-    return item.type === "video" ? (item.poster || "") : item.src;
+    return item.type === "video" ? (item.poster || "") : (item.src || "");
+  }
+
+  function preloadImg(src){
+    if(!src) return Promise.resolve(false);
+    if(cache.has(src)) return cache.get(src);
+
+    const p = new Promise(resolve=>{
+      const img = new Image();
+      img.decoding = "async";
+      img.onload  = () => resolve(true);
+      img.onerror = () => resolve(false);
+      img.src = src;
+    });
+
+    cache.set(src, p);
+    return p;
+  }
+
+  function setLoading(slotEl, on){
+    const l = slotEl.querySelector(".rg-loading");
+    if(l) l.classList.toggle("is-on", !!on);
   }
 
   function markSide(imgEl, item){
-    imgEl.classList.toggle("rg-wide", !!item.wide);
+    imgEl.classList.toggle("rg-wide", !!(item && item.wide));
   }
 
   function setSidesHidden(h){
@@ -160,51 +258,115 @@
     right.style.visibility = h ? "hidden" : "visible";
   }
 
+  function stopVideo(){
+    if(!activeVideo) return;
+    try{ activeVideo.pause(); }catch(e){}
+    try{ activeVideo.removeAttribute("src"); activeVideo.load?.(); }catch(e){}
+    activeVideo = null;
+  }
+
+  function setSide(imgEl, item){
+    const slot = imgEl.parentElement;
+    setLoading(slot, true);
+
+    imgEl.classList.add("is-loading");
+    imgEl.decoding = "async";
+    imgEl.loading = "eager";
+    imgEl.fetchPriority = "low";
+
+    imgEl.onload = ()=>{ imgEl.classList.remove("is-loading"); setLoading(slot,false); };
+    imgEl.onerror= ()=>{ imgEl.classList.remove("is-loading"); setLoading(slot,false); };
+
+    imgEl.src = thumbSrc(item) || "";
+    markSide(imgEl, item);
+  }
+
   function showCenter(item){
-    center.innerHTML = "";
+    stopVideo();
+
+    // loader ON
+    center.innerHTML = '<span class="rg-loading is-on" aria-hidden="true">loading...</span>';
 
     if(item.type === "video"){
       const v = document.createElement("video");
-      v.className = "rg-video";
+      v.className = "rg-video is-loading";
       v.src = item.src;
       if(item.poster) v.poster = item.poster;
+
       v.autoplay = true;
       v.loop = true;
       v.playsInline = true;
-      v.controls = false;
-      v.muted = false;
+      v.preload = "auto";
+
+      v.controls = false; // ✅ без панели
+      v.setAttribute("playsinline", "");
+      v.setAttribute("webkit-playsinline", "");
+      v.setAttribute("controlslist", "nodownload noplaybackrate noremoteplayback");
+      v.setAttribute("disablepictureinpicture", "");
 
       const unmute = document.createElement("div");
       unmute.className = "rg-unmute";
+      unmute.innerHTML = "<span>tap to sound</span>";
 
       center.appendChild(v);
       center.appendChild(unmute);
+      activeVideo = v;
 
-      const tryPlay = v.play();
-      if(tryPlay && typeof tryPlay.catch === "function"){
-        tryPlay.catch(()=>{
-          v.muted = true;
-          v.play().catch(()=>{});
+      // когда есть кадр — снимаем loading
+      const hideLoader = ()=>{
+        v.classList.remove("is-loading");
+        setLoading(center, false);
+      };
+      v.addEventListener("loadeddata", hideLoader, {once:true});
+      v.addEventListener("canplay", hideLoader, {once:true});
+      v.onerror = ()=>{ hideLoader(); };
+
+      // autoplay со звуком (best effort). если блок — играем muted и просим tap
+      const trySound = async ()=>{
+        try{
+          v.muted = false;
+          await v.play();
+          unmute.classList.remove("is-on");
+        }catch(err){
+          try{
+            v.muted = true;
+            await v.play();
+          }catch(e){}
           unmute.classList.add("is-on");
-        });
-      }
+        }
+      };
 
-      unmute.addEventListener("click", ()=>{
+      unmute.addEventListener("click", async ()=>{
         unmute.classList.remove("is-on");
-        v.muted = false;
-        v.play().catch(()=>{});
+        try{
+          v.muted = false;
+          await v.play();
+        }catch(e){
+          unmute.classList.add("is-on");
+        }
       });
 
+      trySound();
       return;
     }
 
+    // image
     const img = document.createElement("img");
-    img.className = "rg-main";
+    img.className = "rg-main is-loading";
+    img.decoding = "async";
+    img.loading = "eager";
+    img.fetchPriority = "high";
+
+    img.onload = ()=>{ img.classList.remove("is-loading"); setLoading(center,false); };
+    img.onerror= ()=>{ img.classList.remove("is-loading"); setLoading(center,false); };
+
     img.src = item.src;
     center.appendChild(img);
   }
 
-  function show(i){
+  async function show(i){
+    const t = ++token;
+
     if(i < 0) i = elements.length - 1;
     if(i >= elements.length) i = 0;
     index = i;
@@ -212,14 +374,35 @@
     const p = (i - 1 + elements.length) % elements.length;
     const n = (i + 1) % elements.length;
 
-    left.src  = thumbSrc(elements[p]);
-    right.src = thumbSrc(elements[n]);
+    // loading сразу
+    setLoading(left.parentElement, true);
+    setLoading(right.parentElement, true);
+    setLoading(center, true);
 
-    markSide(left, elements[p]);
-    markSide(right, elements[n]);
+    // прелоадим текущий и соседей (только картинки/постер)
+    await Promise.all([
+      preloadImg(thumbSrc(elements[i])),
+      preloadImg(thumbSrc(elements[p])),
+      preloadImg(thumbSrc(elements[n]))
+    ]);
+    if(t !== token) return;
 
+    setSide(left,  elements[p]);
+    setSide(right, elements[n]);
     showCenter(elements[i]);
+
+    // если текущий wide:true — скрываем боковые (у тебя так было)
     setSidesHidden(!!elements[i].wide);
+
+    // второе кольцо — в фоне
+    const p2 = (p - 1 + elements.length) % elements.length;
+    const n2 = (n + 1) % elements.length;
+    const bg = ()=>{
+      preloadImg(thumbSrc(elements[p2]));
+      preloadImg(thumbSrc(elements[n2]));
+    };
+    if("requestIdleCallback" in window) requestIdleCallback(bg, {timeout:600});
+    else setTimeout(bg, 0);
   }
 
   prevBtn.onclick = ()=>show(index - 1);
@@ -228,3 +411,4 @@
   show(0);
 })();
 </script>
+
