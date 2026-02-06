@@ -1,0 +1,271 @@
+<div id="rg-gallery">
+  <div id="rg-stage">
+    <div id="rg-center">
+      <div class="rg-nav">
+        <button class="rg-btn rg-prev" type="button">⟨</button>
+        <button class="rg-btn rg-next" type="button">⟩</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<link rel="dns-prefetch" href="//raw.githubusercontent.com">
+<link rel="preconnect" href="https://raw.githubusercontent.com" crossorigin>
+<link rel="dns-prefetch" href="//github.com">
+<link rel="preconnect" href="https://github.com" crossorigin>
+<link rel="dns-prefetch" href="//res.cloudinary.com">
+<link rel="preconnect" href="https://res.cloudinary.com" crossorigin>
+
+<style>
+#rg-gallery{position:fixed;inset:0;background:#fcfcfc;z-index:9999;overflow:hidden}
+#rg-stage{position:absolute;inset:0;top:-60px;display:flex;align-items:center;justify-content:center;pointer-events:none}
+#rg-center{width:74vw;max-width:430px;height:50vh;max-height:460px;display:flex;align-items:center;justify-content:center;position:relative;pointer-events:none}
+.rg-main{max-width:100%;max-height:100%;object-fit:contain;display:block;pointer-events:auto}
+.rg-nav{position:absolute;left:50%;bottom:-65px;transform:translateX(-50%);display:flex;gap:25px;pointer-events:auto}
+.rg-btn{font-size:1.6rem;background:none;border:none;color:#666;cursor:pointer;padding:4px 8px;user-select:none;-webkit-tap-highlight-color:transparent}
+</style>
+
+<script>
+(function(){
+  const gallery=document.getElementById("rg-gallery");
+  if(!gallery||gallery.dataset.rgInit==="1")return;
+  gallery.dataset.rgInit="1";
+
+  const CLOUD="dmtnse4sz";
+  const DPR=Math.max(1, Math.min(3, window.devicePixelRatio||1));
+  const W_IMG=Math.min(1600, Math.ceil(430 * DPR * 1.6));   // под твой max-width:430
+  const W_POSTER=Math.min(1600, Math.ceil(430 * DPR * 1.2)); // постер можно чуть меньше
+
+  function cldFetchImg(url, w){
+    // eco быстрее и почти без потери визуально
+    return `https://res.cloudinary.com/${CLOUD}/image/fetch/f_auto,q_auto:eco,fl_progressive,w_${w}/${encodeURIComponent(url)}`;
+  }
+
+  const VIDEO_POSTER_ORIG="https://raw.githubusercontent.com/tsyomiki-collab/devil2/main/Screenshot%202026-02-03%20at%2019.01.32.png";
+  const VIDEO_POSTER=cldFetchImg(VIDEO_POSTER_ORIG, W_POSTER);
+
+  // ВАЖНО: github.com/.../raw медленнее и иногда редиректы.
+  // Но если тебе нужно оставить как есть — ок, мы всё равно через Cloudinary fetch сделаем быстрее.
+  const elementsRaw=[
+    {type:'img',src:"https://github.com/tsyomiki-collab/devil2/raw/main/photo_2025-09-17%2001.41.48-2.webp"},
+    {type:'img',src:"https://github.com/tsyomiki-collab/devil2/raw/main/photo_2025-09-17%2001.50.23-2.webp"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/devil1/main/DevilAngel_ElenasKasnatschejew_TianaLenz_Editorial_3.webp"},
+    {type:'img',src:"https://github.com/tsyomiki-collab/devil2/raw/main/photo_2025-09-17%2001.57.15-2.webp"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/devil1/main/DevilAngel_ElenasKasnatschejew_TianaLenz_Editorial_5.webp"},
+    {type:'img',src:"https://github.com/tsyomiki-collab/devil2/raw/main/photo_2025-09-17%2001.59.22-2.webp"},
+    {type:'video',src:"https://res.cloudinary.com/dmtnse4sz/video/upload/v1769438095/Editorial_AngelundDevil_TokioHeavenAndHell43_pzzoaq.mp4",poster:VIDEO_POSTER},
+    {type:'img',src:"https://github.com/tsyomiki-collab/devil2/raw/main/photo_2025-09-17%2002.01.35-2.webp"},
+    {type:'img',src:"https://github.com/tsyomiki-collab/devil2/raw/main/photo_2025-09-17%2002.03.31-2.webp"},
+    {type:'img',src:"https://github.com/tsyomiki-collab/devil2/raw/main/photo_2025-09-17%2002.06.53-2.webp"},
+    {type:'img',src:"https://github.com/tsyomiki-collab/devil2/raw/main/DevilAngel_ElenasKasnatschejew_TianaLenz_Editorial_10.webp"}
+  ];
+
+  // Сжимаем/режем ВСЕ картинки через Cloudinary fetch (видео не трогаем)
+  const elements = elementsRaw.map(el=>{
+    if(el.type==="img") return {...el, src: cldFetchImg(el.src, W_IMG)};
+    return el;
+  });
+
+  let index=0, token=0, currentVideo=null;
+  const center=document.getElementById("rg-center");
+  const prevBtn=gallery.querySelector(".rg-prev");
+  const nextBtn=gallery.querySelector(".rg-next");
+
+  // КЭШ НОД (чтобы не создавать заново) + готовность
+  const nodeCache=new Map();   // key -> node
+  const readyCache=new Map();  // key -> Promise
+  const ric = window.requestIdleCallback || ((cb)=>setTimeout(()=>cb({timeRemaining:()=>0}), 120));
+
+  function keyOf(el){ return el.type==="video" ? ("v:"+el.src) : ("i:"+el.src); }
+
+  function clearCenter(){
+    const nav=center.querySelector(".rg-nav");
+    center.innerHTML="";
+    if(nav) center.appendChild(nav);
+  }
+
+  function ensureImg(src){
+    const k="i:"+src;
+    if(nodeCache.has(k)) return nodeCache.get(k);
+
+    const img=new Image();
+    img.className="rg-main";
+    img.decoding="async";
+    img.loading="eager";
+    img.src=src;
+    try{ img.fetchPriority="high"; }catch(e){}
+
+    nodeCache.set(k,img);
+    return img;
+  }
+
+  function ensureVideo(el){
+    const k="v:"+el.src;
+    if(nodeCache.has(k)) return nodeCache.get(k);
+
+    const v=document.createElement("video");
+    v.className="rg-main";
+
+    // атрибуты ДО src
+    v.autoplay=true;
+    v.loop=true;
+    v.controls=false;
+
+    v.playsInline=true;
+    v.setAttribute("playsinline","");
+    v.setAttribute("webkit-playsinline","");
+
+    // автоплей со звуком браузеры блокируют -> стартуем muted, звук после жеста
+    v.muted=true;
+    v.volume=0;
+    v.setAttribute("muted","");
+    v.setAttribute("autoplay","");
+    v.setAttribute("loop","");
+
+    // важно: пока не показали — не тянем всё видео
+    v.preload="metadata";
+
+    v.setAttribute("controlsList","nodownload noplaybackrate noremoteplayback");
+    v.setAttribute("disablePictureInPicture","");
+    v.setAttribute("disableRemotePlayback","");
+
+    if(el.poster) v.poster=el.poster;
+    v.src=el.src;
+
+    nodeCache.set(k,v);
+    return v;
+  }
+
+  function ensureReady(el){
+    const k=keyOf(el);
+    if(readyCache.has(k)) return readyCache.get(k);
+
+    const p = new Promise((resolve)=>{
+      if(el.type==="img"){
+        const img=ensureImg(el.src);
+        const done = async ()=>{
+          // decode может ждать долго на слабых — поэтому мы его не делаем блокирующим
+          if(img.decode){
+            try{ await img.decode(); }catch(e){}
+          }
+          resolve();
+        };
+        if(img.complete){ done(); return; }
+        img.onload=done;
+        img.onerror=done;
+      } else {
+        // постер прогреем обязательно
+        if(el.poster) ensureReady({type:"img", src: el.poster});
+        const v=document.createElement("video");
+        v.preload="metadata";
+        v.onloadedmetadata=v.onerror=()=>resolve();
+        v.src=el.src;
+      }
+    });
+
+    readyCache.set(k,p);
+    return p;
+  }
+
+  // НЕ ждём preload для показа: показываем сразу, а потом догружаем рядом
+  function showCenterInstant(el){
+    clearCenter();
+    if(currentVideo){ try{ currentVideo.pause(); }catch(e){} currentVideo=null; }
+
+    if(el.type==="img"){
+      center.appendChild(ensureImg(el.src));
+      return;
+    }
+
+    const v=ensureVideo(el);
+
+    // когда реально показываем видео — можно повысить preload
+    v.preload="auto";
+    try{ v.load(); }catch(e){}
+
+    center.appendChild(v);
+    currentVideo=v;
+    startVideo(v);
+  }
+
+  // автоплей muted + разлочка звука по жесту
+  let audioUnlocked=false;
+  function armAudioUnlock(){
+    if(audioUnlocked) return;
+    const unlock = async ()=>{
+      audioUnlocked=true;
+      if(currentVideo){
+        currentVideo.muted=false;
+        currentVideo.volume=1;
+        try{ await currentVideo.play(); }catch(e){}
+      }
+    };
+    window.addEventListener("pointerdown", unlock, {once:true});
+    window.addEventListener("touchstart", unlock, {once:true, passive:true});
+    window.addEventListener("keydown", unlock, {once:true});
+  }
+
+  async function startVideo(v){
+    // попробуем звук (иногда на десктопе разрешено)
+    if(audioUnlocked){
+      v.muted=false; v.volume=1;
+      try{ await v.play(); }catch(e){}
+      return;
+    }
+
+    v.muted=false; v.volume=1;
+    try{ await v.play(); audioUnlocked=true; return; }catch(e){}
+
+    // гарантированный вариант
+    v.muted=true; v.volume=0;
+    try{ await v.play(); }catch(e){}
+    armAudioUnlock();
+  }
+
+  function preloadAround(i){
+    const n=elements.length;
+    const prev=(i-1+n)%n;
+    const next=(i+1)%n;
+
+    ensureReady(elements[i]);
+    ensureReady(elements[prev]);
+    ensureReady(elements[next]);
+
+    ric(()=>{
+      ensureReady(elements[(prev-1+n)%n]);
+      ensureReady(elements[(next+1)%n]);
+    });
+  }
+
+  function show(i){
+    const t=++token;
+    const n=elements.length;
+    if(i<0)i=n-1;
+    if(i>=n)i=0;
+    index=i;
+
+    // 1) показываем сразу (без await)
+    showCenterInstant(elements[i]);
+
+    // 2) догружаем рядом (фон)
+    preloadAround(i);
+
+    // 3) если кликнули быстро много раз — просто игнорируем старые фоновые задачи
+    // (t тут оставлен для совместимости)
+    return t;
+  }
+
+  prevBtn.onclick=()=>show(index-1);
+  nextBtn.onclick=()=>show(index+1);
+
+  let startX=0;
+  gallery.addEventListener("touchstart",e=>{startX=e.touches[0].clientX},{passive:true});
+  gallery.addEventListener("touchend",e=>{
+    const d=e.changedTouches[0].clientX-startX;
+    if(Math.abs(d)>40){ d<0?show(index+1):show(index-1) }
+  },{passive:true});
+
+  // старт: сразу показываем 0, без ожиданий
+  show(0);
+})();
+</script>
