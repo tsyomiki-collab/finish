@@ -37,27 +37,26 @@
 }
 *,*::before,*::after{box-sizing:border-box}
 
-/* ✅ Адаптивные пропорции (визуал как на 1600×1200, но "одинаково" на разных экранах) */
+/* ✅ Адаптивные пропорции (визуал как на 1600×1200, но стабильнее на маленьких экранах) */
 :root{
-  /* сцена/обвязка */
   --wrap-max: 1400px;
-  --wrap-pad: clamp(24px, 6vw, 110px);
+  --wrap-pad: clamp(20px, 5vw, 110px);
 
-  /* центр: стремимся к 950×760, но не вылезаем за экран */
+  /* центр: чуть выше */
   --center-w: clamp(320px, 62vw, 950px);
-  --center-h: clamp(320px, 64vh, 760px);
+  --center-h: clamp(360px, 70vh, 800px);
 
-  /* боковые: стремимся к 390×360 */
-  --side-w: clamp(160px, 24vw, 390px);
+  /* боковые */
+  --side-w: clamp(150px, 22vw, 390px);
   --side-h: clamp(150px, 30vh, 360px);
 
-  /* “подтягивание” боковых к центру (негативный margin) */
-  --side-pull: clamp(-160px, -10vw, -80px);
+  /* меньше разъезд на маленьких */
+  --side-pull: clamp(-120px, -6vw, -70px);
 
   /* стрелки */
-  --arrow-offset: clamp(14px, 5vw, 80px);
-  --arrow-size: clamp(72px, 8vw, 120px);
-  --arrow-font: clamp(2.2rem, 3.8vw, 3rem);
+  --arrow-offset: clamp(12px, 4vw, 80px);
+  --arrow-size: clamp(64px, 8vw, 120px);
+  --arrow-font: clamp(2.1rem, 3.8vw, 3rem);
 
   /* loading */
   --loading-size: clamp(10px, 1.2vw, 14px);
@@ -184,7 +183,17 @@
 .rg-prev{ left:var(--arrow-offset); }
 .rg-next{ right:var(--arrow-offset); }
 
-/* ✅ Мобилка/узкие окна: боковые скрываем, центр адаптируем */
+/* ✅ Узкие ноуты/малые окна: сильнее фиксируем боковые, чтобы не "разъезжались" */
+@media (max-width:1100px){
+  :root{
+    --side-pull: clamp(-70px, -4vw, -35px);
+    --side-w: clamp(140px, 20vw, 260px);
+    --side-h: clamp(140px, 26vh, 240px);
+    --wrap-pad: clamp(14px, 3vw, 40px);
+  }
+}
+
+/* ✅ Мобилка: боковые скрываем, центр как у тебя */
 @media (max-width:820px){
   .rg-sideSlot{ display:none; }
   .rg-wrapper{
