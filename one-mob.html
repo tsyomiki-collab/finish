@@ -1,11 +1,7 @@
 <div id="rg-gallery">
   <div id="rg-stage">
     <div id="rg-center">
-      <span id="rg-loading" class="rg-loading is-on" aria-hidden="true">loading...</span>
-
-      <div id="rg-media"></div>
-
-      <button id="rg-tap" class="rg-tap" type="button">tap for sound</button>
+      <span class="rg-loading is-on" aria-hidden="true">loading...</span>
 
       <div class="rg-nav">
         <button class="rg-btn rg-prev" type="button">⟨</button>
@@ -19,8 +15,6 @@
 <link rel="preconnect" href="https://raw.githubusercontent.com" crossorigin>
 <link rel="dns-prefetch" href="//res.cloudinary.com">
 <link rel="preconnect" href="https://res.cloudinary.com" crossorigin>
-
-<link id="rg-preload-first" rel="preload" as="image" href="">
 
 <style>
 @font-face{
@@ -37,14 +31,21 @@
 
 #rg-gallery{position:fixed;inset:0;background:#fcfcfc;z-index:9999;overflow:hidden}
 #rg-stage{position:absolute;inset:0;top:-60px;display:flex;align-items:center;justify-content:center;pointer-events:none}
-#rg-center{width:74vw;max-width:430px;height:50vh;max-height:460px;display:flex;align-items:center;justify-content:center;position:relative;pointer-events:none}
 
-#rg-media{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none}
+/* визуал как раньше */
+#rg-center{
+  width:86vw;max-width:520px;
+  height:62vh;max-height:560px;
+  display:flex;align-items:center;justify-content:center;
+  position:relative;pointer-events:none
+}
+
 .rg-main{max-width:100%;max-height:100%;object-fit:contain;display:block;pointer-events:auto}
 
 .rg-nav{position:absolute;left:50%;bottom:-65px;transform:translateX(-50%);display:flex;gap:25px;pointer-events:auto}
 .rg-btn{font-size:1.6rem;background:none;border:none;color:#666;cursor:pointer;padding:4px 8px;user-select:none;-webkit-tap-highlight-color:transparent}
 
+/* loading с mix-blend */
 .rg-loading{
   position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
   font-family:"SegoeUI","Segoe UI",-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif;
@@ -52,16 +53,6 @@
   color:#fff;mix-blend-mode:difference;opacity:.9;pointer-events:none;user-select:none;display:none;
 }
 .rg-loading.is-on{display:block}
-
-.rg-tap{
-  position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
-  font-family:"SegoeUI","Segoe UI",-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif;
-  font-weight:300;font-size:10px;line-height:16px;letter-spacing:.01em;white-space:nowrap;
-  color:#fff;mix-blend-mode:difference;opacity:.9;
-  background:transparent;border:0;padding:0;cursor:pointer;
-  display:none;pointer-events:auto;-webkit-tap-highlight-color:transparent;
-}
-.rg-tap.is-on{display:block}
 </style>
 
 <script>
@@ -89,19 +80,15 @@
 
   const CLOUD="dmtnse4sz";
   const DPR=Math.max(1, Math.min(3, window.devicePixelRatio||1));
-  const centerCSSMax=430;
-  const centerPx=Math.min(centerCSSMax, Math.round(window.innerWidth*0.74));
+  const centerPx=Math.min(520, Math.round(window.innerWidth*0.86));
   const W=Math.min(1800, Math.ceil(centerPx*DPR*1.2));
-  const cldFetch=url=>`https://res.cloudinary.com/${CLOUD}/image/fetch/f_auto,q_auto:good,fl_progressive,fl_lossy,w_${W}/${encodeURIComponent(url)}`;
+  const cldFetch=u=>`https://res.cloudinary.com/${CLOUD}/image/fetch/f_auto,q_auto:good,fl_progressive,fl_lossy,w_${W}/${encodeURIComponent(u)}`;
 
-  const elements = originals.map(u=>({type:"img", src: cldFetch(u)}));
+  const elements = originals.map(u=>cldFetch(u));
 
-  const preloadTag=document.getElementById("rg-preload-first");
-  if(preloadTag) preloadTag.href = elements[0].src;
-
-  const media=document.getElementById("rg-media");
-  const loading=document.getElementById("rg-loading");
-  const tapBtn=document.getElementById("rg-tap");
+  const center=document.getElementById("rg-center");
+  const nav=center.querySelector(".rg-nav");
+  const loading=center.querySelector(".rg-loading");
   const prevBtn=gallery.querySelector(".rg-prev");
   const nextBtn=gallery.querySelector(".rg-next");
 
@@ -109,24 +96,27 @@
   const readyCache=new Map();
   const ric=window.requestIdleCallback||((cb)=>setTimeout(()=>cb({timeRemaining:()=>0}),120));
 
-  let index=0, currentVideo=null, audioUnlocked=false;
+  let index=0, token=0;
 
   const setLoading=on=>loading.classList.toggle("is-on",!!on);
-  const setTap=on=>tapBtn.classList.toggle("is-on",!!on);
-  const clearMedia=()=>media.innerHTML="";
 
-  function ensureImg(src,isCurrent){
+  function clearCenterKeepUI(){
+    center.innerHTML="";
+    center.appendChild(loading);
+    center.appendChild(nav);
+  }
+
+  function ensureImg(src){
     if(nodeCache.has(src)) return nodeCache.get(src);
     const img=new Image();
     img.className="rg-main"; img.decoding="async"; img.loading="eager"; img.src=src;
-    try{img.fetchPriority=isCurrent?"high":"low"}catch(e){}
     nodeCache.set(src,img); return img;
   }
 
   function ensureReady(src){
     if(readyCache.has(src)) return readyCache.get(src);
-    const img=ensureImg(src,false);
-    const p=new Promise(r=>{
+    const img=ensureImg(src);
+    const p=new Promise(async (r)=>{
       const done=async()=>{ if(img.decode)try{await img.decode()}catch(e){}; r(); };
       if(img.complete){ done(); return; }
       img.onload=done; img.onerror=done;
@@ -137,23 +127,28 @@
   function preloadAround(i){
     const n=elements.length;
     const ids=[i,(i-1+n)%n,(i+1)%n,(i-2+n)%n,(i+2)%n];
-    ensureReady(elements[ids[0]].src);
-    ensureReady(elements[ids[1]].src);
-    ensureReady(elements[ids[2]].src);
+    ensureReady(elements[ids[0]]);
+    ensureReady(elements[ids[1]]);
+    ensureReady(elements[ids[2]]);
     ric(()=>{
-      ensureReady(elements[ids[3]].src);
-      ensureReady(elements[ids[4]].src);
+      ensureReady(elements[ids[3]]);
+      ensureReady(elements[ids[4]]);
     });
   }
 
   async function show(i){
+    const t=++token;
     const n=elements.length;
     if(i<0)i=n-1; if(i>=n)i=0; index=i;
+
     setLoading(true);
     preloadAround(i);
-    await ensureReady(elements[i].src);
-    clearMedia();
-    media.appendChild(ensureImg(elements[i].src,true));
+
+    await ensureReady(elements[i]);
+    if(t!==token) return;
+
+    clearCenterKeepUI();
+    center.insertBefore(ensureImg(elements[i]), nav);
     setLoading(false);
   }
 
@@ -167,6 +162,7 @@
     if(Math.abs(d)>40) d<0?show(index+1):show(index-1);
   },{passive:true});
 
+  preloadAround(0);
   show(0);
 })();
 </script>
