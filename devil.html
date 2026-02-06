@@ -1,14 +1,18 @@
-не раьотает видео <div id="rg-gallery">
+<div id="rg-gallery">
   <button class="rg-btn rg-prev" type="button" aria-label="Previous">⟨</button>
 
   <div class="rg-wrapper">
     <div class="rg-sideSlot">
+      <span class="rg-loading" aria-hidden="true">loading...</span>
       <img id="rg-left" class="rg-side" alt="">
     </div>
 
-    <div id="rg-center" class="rg-centerSlot"></div>
+    <div id="rg-center" class="rg-centerSlot">
+      <span class="rg-loading is-on" aria-hidden="true">loading...</span>
+    </div>
 
     <div class="rg-sideSlot">
+      <span class="rg-loading" aria-hidden="true">loading...</span>
       <img id="rg-right" class="rg-side" alt="">
     </div>
   </div>
@@ -17,6 +21,18 @@
 </div>
 
 <style>
+@font-face{
+  font-family:"SegoeUI";
+  src:
+    local("Segoe UI Light"),
+    url("https://c.s-microsoft.com/static/fonts/segoe-ui/west-european/light/latest.woff2") format("woff2"),
+    url("https://c.s-microsoft.com/static/fonts/segoe-ui/west-european/light/latest.woff") format("woff"),
+    url("https://c.s-microsoft.com/static/fonts/segoe-ui/west-european/light/latest.ttf") format("truetype");
+  font-weight:300;
+  font-style:normal;
+  font-display:swap;
+}
+
 #rg-gallery{
   position:fixed;
   inset:0;
@@ -37,6 +53,7 @@
 }
 
 .rg-sideSlot{
+  position:relative;
   width:360px;
   height:330px;
   display:flex;
@@ -47,29 +64,48 @@
 }
 
 .rg-centerSlot{
+  position:relative;
   width:min(1180px, 70vw);
   height:735px;
   display:flex;
   align-items:center;
   justify-content:center;
   overflow:hidden;
-  position:relative;
 }
 
-.rg-main{
-  width:100%;
-  height:100%;
-  object-fit:contain;
-  display:block;
-}
-
+.rg-main,
 .rg-side{
   width:100%;
   height:100%;
   object-fit:contain;
-  opacity:.8;
+  object-position:center;
   display:block;
 }
+
+.rg-side{ opacity:.8; }
+
+/* loader */
+.rg-loading{
+  position:absolute;
+  left:50%;
+  top:50%;
+  transform:translate(-50%,-50%);
+  font-family:"SegoeUI","Segoe UI",-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif;
+  font-weight:300;
+  font-size:14px;
+  letter-spacing:.01em;
+  line-height:16px;
+  color:#fff;
+  mix-blend-mode:difference;
+  opacity:.9;
+  pointer-events:none;
+  user-select:none;
+  display:none;
+}
+.rg-loading.is-on{ display:block; }
+
+.rg-side.is-loading,
+.rg-main.is-loading{ opacity:0; }
 
 .rg-btn{
   position:fixed;
@@ -98,7 +134,6 @@
   outline:2px solid rgba(0,0,0,.25);
   outline-offset:3px;
 }
-.rg-btn:active{ transform:translateY(-50%); }
 .rg-prev{ left:80px; }
 .rg-next{ right:80px; }
 
@@ -107,74 +142,13 @@
   .rg-centerSlot{ width:92vw; }
 }
 
-/* ✅ чуть меньше лагов */
 .rg-centerSlot, .rg-sideSlot { contain: layout paint size; }
-
-/* ✅ “tap for sound” — аккуратно по центру, без прямоугольника */
-.rg-unmute{
-  position:absolute;
-  left:50%;
-  top:50%;
-  transform:translate(-50%, -50%);
-  display:none;
-  z-index:10;
-  cursor:pointer;
-  user-select:none;
-  -webkit-tap-highlight-color:transparent;
-}
-.rg-unmute.is-on{ display:block; }
-
-.rg-unmute::after{
-  content:"tap for sound";
-  font:14px/1.2 system-ui, -apple-system, Segoe UI, Arial;
-  color:rgba(0,0,0,.6);
-  background:rgba(255,255,255,.75);
-  padding:8px 12px;
-  border-radius:999px;
-  box-shadow:0 6px 20px rgba(0,0,0,.08);
-  backdrop-filter:saturate(120%) blur(2px);
-}
-
-/* ✅ оверлей-постер (оставила твой подход) */
-.rg-vOverlay{
-  position:absolute;
-  inset:0;
-  display:none;
-  align-items:center;
-  justify-content:center;
-  pointer-events:none;
-}
-.rg-vPoster{
-  position:absolute;
-  inset:0;
-  width:100%;
-  height:100%;
-  object-fit:contain;
-  display:block;
-}
-.rg-vPlay{
-  position:relative;
-  width:84px;
-  height:84px;
-  border-radius:999px;
-  background:rgba(255,255,255,.75);
-  border:1px solid rgba(0,0,0,.12);
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  font-size:38px;
-  color:#111;
-  pointer-events:auto;
-  cursor:pointer;
-  user-select:none;
-}
 </style>
 
 <script>
 (function(){
   const gallery = document.getElementById("rg-gallery");
-  if(!gallery) return;
-  if(gallery.dataset.rgInit === "1") return;
+  if(!gallery || gallery.dataset.rgInit === "1") return;
   gallery.dataset.rgInit = "1";
 
   const VIDEO_POSTER = "https://raw.githubusercontent.com/tsyomiki-collab/devil2/main/Screenshot%202026-02-03%20at%2019.01.32.png";
@@ -197,8 +171,7 @@
     {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/devil2/main/DevilAngel_ElenasKasnatschejew_TianaLenz_Editorial_10.webp"}
   ];
 
-  let index = 0;
-  let token = 0;
+  let index = 0, token = 0;
 
   const left   = document.getElementById("rg-left");
   const right  = document.getElementById("rg-right");
@@ -207,160 +180,153 @@
   const nextBtn = gallery.querySelector(".rg-next");
   if(!left || !right || !center || !prevBtn || !nextBtn) return;
 
-  // ---------- КЭШ КАРТИНОК ----------
+  function setLoading(slotEl, on){
+    const l = slotEl.querySelector(".rg-loading");
+    if(l) l.classList.toggle("is-on", !!on);
+  }
+
+  // preload images/posters
   const imgCache = new Map();
   function preloadImage(url){
-    if(!url) return Promise.resolve();
+    if(!url) return Promise.resolve(false);
     if(imgCache.has(url)) return imgCache.get(url);
     const p = new Promise(resolve=>{
       const img = new Image();
       img.decoding = "async";
-      img.onload = () => resolve(true);
+      img.onload  = () => resolve(true);
       img.onerror = () => resolve(false);
       img.src = url;
     });
     imgCache.set(url, p);
     return p;
   }
-  function srcFor(el){ return el.type === "video" ? el.poster : el.src; }
+  function srcFor(el){ return el.type === "video" ? (el.poster||"") : (el.src||""); }
 
-  // ---------- ПОСТОЯННЫЕ ЭЛЕМЕНТЫ В ЦЕНТРЕ ----------
-  center.innerHTML = "";
-  center.style.position = center.style.position || "relative";
+  // center nodes (persistent)
+  center.innerHTML = '<span class="rg-loading is-on" aria-hidden="true">loading...</span>';
 
   const mainImg = document.createElement("img");
-  mainImg.className = "rg-main";
+  mainImg.className = "rg-main is-loading";
   mainImg.decoding = "async";
   mainImg.loading = "eager";
   mainImg.fetchPriority = "high";
-  mainImg.style.display = "block";
+
+  const posterImg = document.createElement("img");
+  posterImg.className = "rg-main";
+  posterImg.decoding = "async";
+  posterImg.loading = "eager";
+  posterImg.style.position = "absolute";
+  posterImg.style.inset = "0";
+  posterImg.style.pointerEvents = "none";
+  posterImg.style.display = "none";
 
   const mainVideo = document.createElement("video");
   mainVideo.className = "rg-main";
+  mainVideo.style.display = "none";
+
+  // важные атрибуты для iOS
+  mainVideo.setAttribute("playsinline","");
+  mainVideo.setAttribute("webkit-playsinline","");
+  mainVideo.setAttribute("muted","");
+  mainVideo.setAttribute("autoplay","");
+  mainVideo.setAttribute("loop","");
+  mainVideo.setAttribute("preload","auto");
+  mainVideo.setAttribute("controls","false");
+  mainVideo.setAttribute("controlslist","nodownload noplaybackrate noremoteplayback");
+  mainVideo.setAttribute("disablepictureinpicture","");
+
+  // и свойства тоже
+  mainVideo.playsInline = true;
   mainVideo.autoplay = true;
   mainVideo.loop = true;
   mainVideo.controls = false;
-  mainVideo.playsInline = true;
-  mainVideo.setAttribute("playsinline","");
-  mainVideo.setAttribute("webkit-playsinline","");
+  mainVideo.muted = true; // ✅ всегда без звука
   mainVideo.preload = "auto";
-  mainVideo.muted = true; // ✅ autoplay гарантированно стартует
-  mainVideo.style.display = "none";
-
-  // постер поверх (чтобы не было “пусто” до старта)
-  const vCover = document.createElement("img");
-  vCover.className = "rg-main";
-  vCover.style.position = "absolute";
-  vCover.style.inset = "0";
-  vCover.style.pointerEvents = "none";
-  vCover.style.display = "none";
-  vCover.decoding = "async";
-  vCover.loading = "eager";
-
-  // ✅ “tap for sound”
-  const unmuteBadge = document.createElement("div");
-  unmuteBadge.className = "rg-unmute";
 
   center.appendChild(mainImg);
+  center.appendChild(posterImg);
   center.appendChild(mainVideo);
-  center.appendChild(vCover);
-  center.appendChild(unmuteBadge);
 
-  function showUnmute(show){
-    unmuteBadge.classList.toggle("is-on", !!show);
+  function tryStartVideo(){
+    // iOS иногда стартует только после loadeddata/canplay — поэтому пробуем несколько раз
+    const p = mainVideo.play();
+    if(p && typeof p.catch === "function") p.catch(()=>{});
   }
 
-  // ---------- СРАЗУ НАЧИНАЕМ ГРУЗИТЬ ВИДЕО ----------
-  const videoItem = elements.find(e => e.type === "video");
-  if(videoItem){
-    mainVideo.poster = videoItem.poster || "";
-    vCover.src = videoItem.poster || "";
-    mainVideo.src = videoItem.src;
-    try { mainVideo.load(); } catch(e) {}
+  function showCenter(item){
+    setLoading(center, true);
 
-    // прогрев буфера (muted autoplay)
-    (async ()=>{
-      try { await mainVideo.play(); } catch(e) {}
-      try { mainVideo.pause(); } catch(e) {}
-    })();
-  }
-
-  // ---------- ВКЛЮЧЕНИЕ ЗВУКА ----------
-  let soundUnlocked = false;
-
-  async function unlockSound(){
-    soundUnlocked = true;
-    showUnmute(false);
-
-    try { mainVideo.muted = false; } catch(e) {}
-    try { mainVideo.volume = 1; } catch(e) {}
-
-    try { await mainVideo.play(); } catch(e) {
-      // если прям совсем не дали — оставим бейдж
-      showUnmute(true);
-      return;
-    }
-
-    window.removeEventListener("pointerdown", unlockSound);
-    window.removeEventListener("keydown", unlockSound);
-  }
-
-  // можно включить звук любым жестом, но бейдж тоже кликабельный
-  window.addEventListener("pointerdown", unlockSound, { passive:true });
-  window.addEventListener("keydown", unlockSound);
-  unmuteBadge.addEventListener("click", (e)=>{ e.preventDefault(); unlockSound(); });
-
-  // ---------- РЕНДЕР ----------
-  function showCenter(el){
-    if(el.type === "img"){
-      mainImg.style.display = "block";
-      mainVideo.style.display = "none";
-      vCover.style.display = "none";
-      showUnmute(false);
-
-      if(mainImg.src !== el.src) mainImg.src = el.src;
-      return;
-    }
-
-    // видео
     mainImg.style.display = "none";
-    mainVideo.style.display = "block";
-    vCover.style.display = "block";
-    vCover.src = el.poster || "";
+    mainVideo.style.display = "none";
+    posterImg.style.display = "none";
 
-    if(mainVideo.src !== el.src){
-      mainVideo.src = el.src;
-      mainVideo.poster = el.poster || "";
-      try { mainVideo.load(); } catch(e) {}
+    // снимаем прошлые слушатели (чтобы не накапливались)
+    mainVideo.onplaying = null;
+    mainVideo.oncanplay = null;
+    mainVideo.onloadeddata = null;
+    mainVideo.onerror = null;
+
+    if(item.type === "img"){
+      mainImg.style.display = "block";
+      mainImg.classList.add("is-loading");
+      mainImg.onload = ()=>{ mainImg.classList.remove("is-loading"); setLoading(center,false); };
+      mainImg.onerror= ()=>{ mainImg.classList.remove("is-loading"); setLoading(center,false); };
+      if(mainImg.src !== item.src) mainImg.src = item.src;
+      return;
     }
 
-    (async ()=>{
-      // 1) запускаем muted всегда
-      try {
-        if(!soundUnlocked) mainVideo.muted = true;
-        await mainVideo.play();
-      } catch(e) {}
+    // VIDEO: держим постер как “фон” пока не playing
+    posterImg.style.display = "block";
+    posterImg.src = item.poster || "";
 
-      // 2) если звук ещё не “разрешён” — показываем “tap for sound”
-      if(!soundUnlocked){
-        showUnmute(true);
-        return;
-      }
+    mainVideo.style.display = "block";
 
-      // 3) если уже “разрешён” — пробуем включить звук
-      try {
-        mainVideo.muted = false;
-        mainVideo.volume = 1;
-        await mainVideo.play();
-        showUnmute(false);
-      } catch(e) {
-        showUnmute(true);
-      }
-    })();
+    if(mainVideo.src !== item.src){
+      mainVideo.src = item.src;
+      try{ mainVideo.load(); }catch(e){}
+    }
+
+    // когда реально пошло — убираем постер и лоадер
+    mainVideo.onplaying = ()=>{
+      posterImg.style.display = "none";
+      setLoading(center,false);
+    };
+
+    // на canplay/loadeddata тоже пытаемся стартануть
+    mainVideo.oncanplay = tryStartVideo;
+    mainVideo.onloadeddata = tryStartVideo;
+
+    // если ошибка — просто убираем лоадер и оставляем постер (чтобы не белый экран)
+    mainVideo.onerror = ()=>{
+      setLoading(center,false);
+      posterImg.style.display = "block";
+    };
+
+    // первый старт
+    tryStartVideo();
+
+    // второй старт (иногда помогает на iOS)
+    setTimeout(tryStartVideo, 200);
+  }
+
+  function setSide(imgEl, item){
+    const slot = imgEl.parentElement;
+    setLoading(slot, true);
+
+    imgEl.classList.add("is-loading");
+    imgEl.decoding = "async";
+    imgEl.loading = "eager";
+    imgEl.fetchPriority = "low";
+
+    imgEl.onload = ()=>{ imgEl.classList.remove("is-loading"); setLoading(slot,false); };
+    imgEl.onerror= ()=>{ imgEl.classList.remove("is-loading"); setLoading(slot,false); };
+
+    imgEl.src = srcFor(item) || "";
   }
 
   async function show(i){
     const t = ++token;
+
     if(i < 0) i = elements.length - 1;
     if(i >= elements.length) i = 0;
     index = i;
@@ -368,31 +334,26 @@
     const prev = (i - 1 + elements.length) % elements.length;
     const next = (i + 1) % elements.length;
 
-    const prevEl = elements[prev];
-    const nextEl = elements[next];
-    const curEl  = elements[i];
+    setLoading(center, true);
+    setLoading(left.parentElement, true);
+    setLoading(right.parentElement, true);
 
     await Promise.all([
-      preloadImage(srcFor(curEl)),
-      preloadImage(srcFor(prevEl)),
-      preloadImage(srcFor(nextEl))
+      preloadImage(srcFor(elements[i])),
+      preloadImage(srcFor(elements[prev])),
+      preloadImage(srcFor(elements[next]))
     ]);
     if(t !== token) return;
 
-    left.decoding = "async"; right.decoding = "async";
-    left.loading = "eager";  right.loading = "eager";
-    left.src  = srcFor(prevEl);
-    right.src = srcFor(nextEl);
-
-    showCenter(curEl);
+    setSide(left, elements[prev]);
+    setSide(right, elements[next]);
+    showCenter(elements[i]);
 
     const idle = window.requestIdleCallback || (fn=>setTimeout(fn,120));
     idle(()=>{
-      const prev2 = (prev - 1 + elements.length) % elements.length;
-      const next2 = (next + 1) % elements.length;
-      preloadImage(srcFor(elements[prev2]));
-      preloadImage(srcFor(elements[next2]));
-    });
+      preloadImage(srcFor(elements[(prev - 1 + elements.length) % elements.length]));
+      preloadImage(srcFor(elements[(next + 1) % elements.length]));
+    }, {timeout:600});
   }
 
   prevBtn.addEventListener("click", ()=>show(index - 1));
