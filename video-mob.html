@@ -1,0 +1,266 @@
+<div id="rg-gallery">
+  <div id="rg-stage">
+    <div id="rg-center">
+      <div class="rg-nav">
+        <button class="rg-btn rg-prev" type="button">⟨</button>
+        <button class="rg-btn rg-next" type="button">⟩</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<link rel="dns-prefetch" href="//raw.githubusercontent.com">
+<link rel="preconnect" href="https://raw.githubusercontent.com" crossorigin>
+<link rel="dns-prefetch" href="//res.cloudinary.com">
+<link rel="preconnect" href="https://res.cloudinary.com" crossorigin>
+
+<style>
+#rg-gallery{position:fixed;inset:0;background:#fcfcfc;z-index:9999;overflow:hidden}
+#rg-stage{position:absolute;inset:0;top:-60px;display:flex;align-items:center;justify-content:center;pointer-events:none}
+#rg-center{width:74vw;max-width:430px;height:50vh;max-height:460px;display:flex;align-items:center;justify-content:center;position:relative;pointer-events:none}
+.rg-main{max-width:100%;max-height:100%;object-fit:contain;display:block;pointer-events:auto}
+.rg-nav{position:absolute;left:50%;bottom:-65px;transform:translateX(-50%);display:flex;gap:25px;pointer-events:auto}
+.rg-btn{font-size:1.6rem;background:none;border:none;color:#666;cursor:pointer;padding:4px 8px;user-select:none;-webkit-tap-highlight-color:transparent}
+</style>
+
+<script>
+(function(){
+  const gallery=document.getElementById("rg-gallery");
+  if(!gallery||gallery.dataset.rgInit==="1")return;
+  gallery.dataset.rgInit="1";
+
+  const elements=[
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/midnight/main/1.jpg"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/midnight/main/2.jpg"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/midnight/main/3.jpg"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/midnight/main/4.jpg"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/midnight/main/5.jpg"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/midnight/main/6.jpg"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/midnight/main/7.jpg"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/midnight/main/8.jpg"},
+    {
+      type:'video',
+      src:"https://res.cloudinary.com/dmtnse4sz/video/upload/v1769859479/9_tz6zq9.mp4",
+      poster:"https://raw.githubusercontent.com/tsyomiki-collab/midnight/main/Screenshot%202026-01-31%20at%2015.42.16.png"
+    },
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/midnight/main/10.jpg"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/midnight/main/11.jpg"}
+  ];
+
+  let index=0,token=0,currentVideo=null;
+  const center=document.getElementById("rg-center");
+  const prevBtn=gallery.querySelector(".rg-prev");
+  const nextBtn=gallery.querySelector(".rg-next");
+
+  // кэш нод (чтобы не создавать заново) + кэш готовности
+  const nodeCache=new Map();   // key -> node
+  const readyCache=new Map();  // key -> Promise
+  const ric = window.requestIdleCallback || ((cb)=>setTimeout(()=>cb({timeRemaining:()=>0}), 120));
+
+  function keyOf(el){ return el.type==="video" ? ("v:"+el.src) : ("i:"+el.src); }
+
+  function preloadImage(src){
+    if(!src) return Promise.resolve();
+    if(readyCache.has("i:"+src)) return readyCache.get("i:"+src);
+
+    const img = ensureImg(src);
+    const p = new Promise((r)=>{
+      const done = async ()=>{
+        if(img.decode){
+          try{ await img.decode(); }catch(e){}
+        }
+        r();
+      };
+      if(img.complete){ done(); return; }
+      img.onload = done;
+      img.onerror = done;
+    });
+
+    readyCache.set("i:"+src, p);
+    return p;
+  }
+
+  function preloadVideoMeta(src){
+    if(!src) return Promise.resolve();
+    const k="vmeta:"+src;
+    if(readyCache.has(k)) return readyCache.get(k);
+
+    const p = new Promise((r)=>{
+      const v=document.createElement("video");
+      v.preload="metadata";
+      v.onloadedmetadata=v.onerror=()=>r();
+      v.src=src;
+    });
+
+    readyCache.set(k, p);
+    return p;
+  }
+
+  function preloadElement(el){
+    return el.type==="video"
+      ? Promise.all([preloadImage(el.poster), preloadVideoMeta(el.src)])
+      : preloadImage(el.src);
+  }
+
+  function clearCenter(){
+    const nav=center.querySelector(".rg-nav");
+    center.innerHTML="";
+    if(nav) center.appendChild(nav);
+  }
+
+  function ensureImg(src){
+    const k="i:"+src;
+    if(nodeCache.has(k)) return nodeCache.get(k);
+
+    const img=new Image();
+    img.className="rg-main";
+    img.decoding="async";
+    img.loading="eager";
+    img.src=src;
+
+    nodeCache.set(k,img);
+    return img;
+  }
+
+  function ensureVideo(el){
+    const k="v:"+el.src;
+    if(nodeCache.has(k)) return nodeCache.get(k);
+
+    const v=document.createElement("video");
+    v.className="rg-main";
+
+    // атрибуты ДО src — важны для Safari/iframe
+    v.autoplay=true;
+    v.loop=true;
+    v.controls=false;
+
+    v.playsInline=true;
+    v.setAttribute("playsinline","");
+    v.setAttribute("webkit-playsinline","");
+
+    // АВТОПЛЕЙ ВЕЗДЕ = muted
+    // (со звуком без клика браузер часто блокирует)
+    v.muted=true;
+    v.volume=0;
+    v.setAttribute("muted","");
+    v.setAttribute("autoplay","");
+    v.setAttribute("loop","");
+
+    v.preload="auto";
+    v.setAttribute("controlsList","nodownload noplaybackrate noremoteplayback");
+    v.setAttribute("disablePictureInPicture","");
+    v.setAttribute("disableRemotePlayback","");
+
+    if(el.poster) v.poster=el.poster;
+
+    // src в конце
+    v.src=el.src;
+
+    nodeCache.set(k,v);
+    return v;
+  }
+
+  // “железный” автоплей: много попыток play() в разные моменты
+  function forceAutoplay(v){
+    let tries=0;
+    const MAX=30;
+
+    const attempt=()=>{
+      if(!v) return;
+      if(!v.paused) return;
+
+      tries++;
+      // держим muted иначе блок
+      v.muted=true;
+      v.volume=0;
+
+      const p=v.play();
+      if(p && typeof p.catch==="function"){
+        p.catch(()=>{
+          if(tries<MAX) requestAnimationFrame(attempt);
+        });
+      } else {
+        if(tries<MAX) requestAnimationFrame(attempt);
+      }
+    };
+
+    // самые “сильные” события для старта
+    v.addEventListener("loadeddata", attempt, {once:true});
+    v.addEventListener("canplay", attempt, {once:true});
+    v.addEventListener("canplaythrough", attempt, {once:true});
+
+    // несколько таймингов
+    attempt();
+    requestAnimationFrame(attempt);
+    setTimeout(attempt, 60);
+    setTimeout(attempt, 200);
+    setTimeout(attempt, 600);
+  }
+
+  function stopCurrentVideo(){
+    if(!currentVideo) return;
+    try{ currentVideo.pause(); }catch(e){}
+    currentVideo=null;
+  }
+
+  function showCenter(el){
+    clearCenter();
+    stopCurrentVideo();
+
+    if(el.type==="img"){
+      const img=ensureImg(el.src);
+      center.appendChild(img);
+      return;
+    }
+
+    const v=ensureVideo(el);
+    // “пинок” + load (иногда важно в iframe)
+    try{ v.load(); }catch(e){}
+    center.appendChild(v);
+    currentVideo=v;
+    forceAutoplay(v);
+  }
+
+  async function show(i){
+    const t=++token;
+    if(i<0)i=elements.length-1;
+    if(i>=elements.length)i=0;
+    index=i;
+
+    const prev=(i-1+elements.length)%elements.length;
+    const next=(i+1)%elements.length;
+
+    await Promise.all([
+      preloadElement(elements[i]),
+      preloadElement(elements[prev]),
+      preloadElement(elements[next])
+    ]);
+
+    if(t!==token) return;
+
+    showCenter(elements[i]);
+
+    ric(()=>{
+      preloadElement(elements[(prev-1+elements.length)%elements.length]);
+      preloadElement(elements[(next+1)%elements.length]);
+    });
+  }
+
+  prevBtn.onclick=()=>show(index-1);
+  nextBtn.onclick=()=>show(index+1);
+
+  let startX=0;
+  gallery.addEventListener("touchstart",e=>{startX=e.touches[0].clientX},{passive:true});
+  gallery.addEventListener("touchend",e=>{
+    const d=e.changedTouches[0].clientX-startX;
+    if(Math.abs(d)>40){ d<0?show(index+1):show(index-1) }
+  },{passive:true});
+
+  document.addEventListener("visibilitychange", ()=>{
+    if(document.hidden && currentVideo) currentVideo.pause();
+    else if(!document.hidden && currentVideo) forceAutoplay(currentVideo);
+  });
+
+  show(0);
+})();
+</script>
