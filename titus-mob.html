@@ -1,0 +1,124 @@
+<div id="rg-gallery">
+  <div id="rg-stage">
+    <div id="rg-center">
+      <div class="rg-nav">
+        <button class="rg-btn rg-prev" type="button">⟨</button>
+        <button class="rg-btn rg-next" type="button">⟩</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+#rg-gallery{position:fixed;inset:0;background:#fcfcfc;z-index:9999;overflow:hidden}
+#rg-stage{position:absolute;inset:0;top:-60px;display:flex;align-items:center;justify-content:center;pointer-events:none}
+#rg-center{width:74vw;max-width:430px;height:50vh;max-height:460px;display:flex;align-items:center;justify-content:center;position:relative;pointer-events:none}
+.rg-main{max-width:100%;max-height:100%;object-fit:contain;display:block;pointer-events:auto}
+.rg-nav{position:absolute;left:50%;bottom:-65px;transform:translateX(-50%);display:flex;gap:25px;pointer-events:auto}
+.rg-btn{font-size:1.6rem;background:none;border:none;color:#666;cursor:pointer;padding:4px 8px;user-select:none;-webkit-tap-highlight-color:transparent}
+</style>
+
+<script>
+(function(){
+  const gallery=document.getElementById("rg-gallery");
+  if(!gallery||gallery.dataset.rgInit==="1")return;
+  gallery.dataset.rgInit="1";
+
+  const elements=[
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/titus/main/1-2.png"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/titus/main/2-2.png"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/titus/main/3-2.png"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/titus/main/4-2.png"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/titus/main/5-2.png"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/titus/main/6-2.png"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/titus/main/7-2.png"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/titus/main/8-2.png"}
+  ];
+
+  let index=0;
+  const center=document.getElementById("rg-center");
+  const prevBtn=gallery.querySelector(".rg-prev");
+  const nextBtn=gallery.querySelector(".rg-next");
+
+  const nodeCache=new Map();   // src -> <img>
+  const readyCache=new Map();  // src -> Promise
+  const ric = window.requestIdleCallback || ((cb)=>setTimeout(()=>cb({timeRemaining:()=>0}), 120));
+
+  function clearCenter(){
+    const nav=center.querySelector(".rg-nav");
+    center.innerHTML="";
+    if(nav)center.appendChild(nav);
+  }
+
+  function ensureImg(src, isCurrent){
+    if(nodeCache.has(src)) return nodeCache.get(src);
+
+    const img=new Image();
+    img.className="rg-main";
+    img.decoding="async";
+    img.loading="eager";
+    img.src=src;
+
+    try{ img.fetchPriority = isCurrent ? "high" : "low"; }catch(e){}
+
+    nodeCache.set(src,img);
+    return img;
+  }
+
+  function preload(src){
+    if(!src) return Promise.resolve();
+    if(readyCache.has(src)) return readyCache.get(src);
+
+    const img=ensureImg(src, false);
+    const p=new Promise((resolve)=>{
+      const done=()=>resolve();
+      if(img.complete){ resolve(); return; }
+      img.onload=done;
+      img.onerror=done;
+    });
+
+    readyCache.set(src,p);
+    return p;
+  }
+
+  function preloadAround(i){
+    const n=elements.length;
+    const idx=(k)=> (k+n)%n;
+
+    const a = elements[idx(i)].src;
+    const b = elements[idx(i-1)].src;
+    const c = elements[idx(i+1)].src;
+
+    preload(a); preload(b); preload(c);
+
+    ric(()=>{
+      preload(elements[idx(i-2)].src);
+      preload(elements[idx(i+2)].src);
+    });
+  }
+
+  function showInstant(i){
+    const n=elements.length;
+    if(i<0)i=n-1;
+    if(i>=n)i=0;
+    index=i;
+
+    clearCenter();
+    center.appendChild(ensureImg(elements[i].src, true));
+
+    preloadAround(i);
+  }
+
+  prevBtn.onclick=()=>showInstant(index-1);
+  nextBtn.onclick=()=>showInstant(index+1);
+
+  let startX=0;
+  gallery.addEventListener("touchstart",e=>{startX=e.touches[0].clientX},{passive:true});
+  gallery.addEventListener("touchend",e=>{
+    const d=e.changedTouches[0].clientX-startX;
+    if(Math.abs(d)>40){ d<0?showInstant(index+1):showInstant(index-1) }
+  },{passive:true});
+
+  showInstant(0);
+})();
+</script>
