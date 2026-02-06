@@ -1,22 +1,32 @@
-<div id="rg-gallery">
-  <button class="rg-btn rg-prev" type="button" aria-label="Previous">⟨</button>
-
-  <div class="rg-wrapper">
-    <div class="rg-sideSlot">
-      <img id="rg-left" class="rg-side" alt="">
-    </div>
-
-    <div id="rg-center" class="rg-centerSlot"></div>
-
-    <div class="rg-sideSlot">
-      <img id="rg-right" class="rg-side" alt="">
-    </div>
-  </div>
-
-  <button class="rg-btn rg-next" type="button" aria-label="Next">⟩</button>
-</div>
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 
 <style>
+@font-face {
+  font-family: "SegoeUI";
+  src:
+    local("Segoe UI Light"),
+    url("https://c.s-microsoft.com/static/fonts/segoe-ui/west-european/light/latest.woff2") format("woff2"),
+    url("https://c.s-microsoft.com/static/fonts/segoe-ui/west-european/light/latest.woff") format("woff"),
+    url("https://c.s-microsoft.com/static/fonts/segoe-ui/west-european/light/latest.ttf") format("truetype");
+  font-weight: 300;
+  font-style: normal;
+  font-display: swap;
+}
+
+#clock {
+  font-family: "SegoeUI", "Segoe UI", -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
+  font-weight: 600;
+  font-size: 13px;
+  letter-spacing: 0.01em;
+  line-height: 16px;
+  white-space: nowrap;
+  color: #000;
+}
+
 #rg-gallery{
   position:fixed;
   inset:0;
@@ -37,16 +47,18 @@
 }
 
 .rg-sideSlot{
+  position:relative;
   width:360px;
   height:330px;
   display:flex;
   align-items:center;
   justify-content:center;
   overflow:hidden;
-  margin:0 -290px;   /* сближаем боковые к центру */
+  margin:0 -290px;
 }
 
 .rg-centerSlot{
+  position:relative;
   width:min(1180px, 70vw);
   height:735px;
   display:flex;
@@ -74,36 +86,18 @@
   position:fixed;
   top:50%;
   transform:translateY(-50%);
-
   width:120px;
-  height: 120px;
+  height:120px;
   display:flex;
   align-items:center;
   justify-content:center;
-  box-sizing:border-box;
-
   font-size:3rem;
-  line-height:1;
-  padding:0;
   border:0;
   background:transparent;
   color:#666;
   cursor:pointer;
   user-select:none;
-
-  appearance:none;
-  -webkit-appearance:none;
   -webkit-tap-highlight-color:transparent;
-}
-
-.rg-btn:focus{ outline:none; }
-.rg-btn:focus-visible{
-  outline:2px solid rgba(0,0,0,.25);
-  outline-offset:3px;
-}
-
-.rg-btn:active{
-  transform:translateY(-50%);
 }
 
 .rg-prev{ left:80px; }
@@ -114,24 +108,64 @@
   .rg-centerSlot{ width:92vw; }
 }
 
-/* чуть меньше лагов */
 .rg-centerSlot, .rg-sideSlot { contain: layout paint size; }
-.rg-main { will-change: contents; }
 
-/* ✅ если текущая фотка горизонтальная — боковых НЕТ (и они не занимают место) */
-#rg-gallery.rg-wide .rg-sideSlot{
+/* loader */
+.rg-loading{
+  position:absolute;
+  left:50%;
+  top:50%;
+  transform:translate(-50%,-50%);
+  font-family:"SegoeUI","Segoe UI",-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif;
+  font-weight:600;
+  font-size:13px;
+  letter-spacing:.01em;
+  line-height:16px;
+  color:#000;
+  opacity:.55;
+  pointer-events:none;
+  user-select:none;
   display:none;
 }
+.rg-loading.is-on{ display:block; }
+
+.rg-side.is-loading,
+.rg-main.is-loading{ opacity:0; }
+
+/* если горизонтальная — скрываем боковые */
+#rg-gallery.rg-wide .rg-sideSlot{ display:none; }
 </style>
+</head>
+<body>
+
+<div id="rg-gallery">
+  <button class="rg-btn rg-prev" type="button" aria-label="Previous">⟨</button>
+
+  <div class="rg-wrapper">
+    <div class="rg-sideSlot">
+      <span class="rg-loading">loading...</span>
+      <img id="rg-left" class="rg-side" alt="">
+    </div>
+
+    <div id="rg-center" class="rg-centerSlot">
+      <span class="rg-loading is-on">loading...</span>
+    </div>
+
+    <div class="rg-sideSlot">
+      <span class="rg-loading">loading...</span>
+      <img id="rg-right" class="rg-side" alt="">
+    </div>
+  </div>
+
+  <button class="rg-btn rg-next" type="button" aria-label="Next">⟩</button>
+</div>
 
 <script>
 (function(){
   const gallery = document.getElementById("rg-gallery");
-  if(!gallery) return;
-  if(gallery.dataset.rgInit === "1") return;
+  if(!gallery || gallery.dataset.rgInit) return;
   gallery.dataset.rgInit = "1";
 
-  // ✅ МАТЕРИАЛЫ ИЗ ВТОРОГО КОДА
   const elements=[
     {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/jovan-s/main/1.png"},
     {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/jovan-s/main/2.png"},
@@ -153,71 +187,76 @@
   let index = 0;
   let token = 0;
 
-  const left   = document.getElementById("rg-left");
-  const right  = document.getElementById("rg-right");
+  const left = document.getElementById("rg-left");
+  const right = document.getElementById("rg-right");
   const center = document.getElementById("rg-center");
-  const prevBtn = gallery.querySelector(".rg-prev");
-  const nextBtn = gallery.querySelector(".rg-next");
-  if(!left || !right || !center || !prevBtn || !nextBtn) return;
+  const prevBtn = document.querySelector(".rg-prev");
+  const nextBtn = document.querySelector(".rg-next");
 
-  // кэш прелоада (как в твоём рабочем коде)
   const cache = new Map();
   function preload(url){
-    if(!url) return Promise.resolve();
     if(cache.has(url)) return cache.get(url);
-
-    const p = new Promise(resolve=>{
+    const p = new Promise(res=>{
       const img = new Image();
-      img.decoding = "async";
-      img.onload = () => resolve(true);
-      img.onerror = () => resolve(false);
-      img.src = url;
+      img.decoding="async";
+      img.onload=()=>res(true);
+      img.onerror=()=>res(false);
+      img.src=url;
     });
-
-    cache.set(url, p);
+    cache.set(url,p);
     return p;
   }
 
-  // ✅ кэш “горизонтальная ли фотка”
   const isWideCache = new Map();
   function getIsWide(src){
     if(isWideCache.has(src)) return Promise.resolve(isWideCache.get(src));
-
-    return new Promise(resolve=>{
-      const img = new Image();
-      img.onload = () => {
+    return new Promise(res=>{
+      const img=new Image();
+      img.onload=()=>{
         const wide = img.naturalWidth > img.naturalHeight;
-        isWideCache.set(src, wide);
-        resolve(wide);
+        isWideCache.set(src,wide);
+        res(wide);
       };
-      img.onerror = () => {
-        isWideCache.set(src, false);
-        resolve(false);
-      };
-      img.src = src;
+      img.onerror=()=>{ isWideCache.set(src,false); res(false); };
+      img.src=src;
     });
   }
 
+  function setLoading(slot, on){
+    const l = slot.querySelector(".rg-loading");
+    if(l) l.classList.toggle("is-on", on);
+  }
+
+  function setSide(imgEl, src){
+    const slot = imgEl.parentElement;
+    setLoading(slot, true);
+    imgEl.classList.add("is-loading");
+    imgEl.onload = ()=>{ imgEl.classList.remove("is-loading"); setLoading(slot,false); };
+    imgEl.onerror= ()=>{ imgEl.classList.remove("is-loading"); setLoading(slot,false); };
+    imgEl.src = src;
+  }
+
   function showCenter(el){
-    center.innerHTML = "";
-    const img = document.createElement("img");
-    img.className = "rg-main";
-    img.decoding = "async";
-    img.loading = "eager";
-    img.fetchPriority = "high";
-    img.src = el.src;
+    setLoading(center,true);
+    center.innerHTML = '<span class="rg-loading is-on">loading...</span>';
+    const img=document.createElement("img");
+    img.className="rg-main is-loading";
+    img.decoding="async";
+    img.fetchPriority="high";
+    img.onload=()=>{ img.classList.remove("is-loading"); setLoading(center,false); };
+    img.onerror=()=>{ img.classList.remove("is-loading"); setLoading(center,false); };
+    img.src=el.src;
     center.appendChild(img);
   }
 
   async function show(i){
-    const t = ++token;
+    const t=++token;
+    if(i<0) i=elements.length-1;
+    if(i>=elements.length) i=0;
+    index=i;
 
-    if(i < 0) i = elements.length - 1;
-    if(i >= elements.length) i = 0;
-    index = i;
-
-    const prev = (i - 1 + elements.length) % elements.length;
-    const next = (i + 1) % elements.length;
+    const prev=(i-1+elements.length)%elements.length;
+    const next=(i+1)%elements.length;
 
     await Promise.all([
       preload(elements[i].src),
@@ -225,38 +264,27 @@
       preload(elements[next].src)
     ]);
 
-    if(t !== token) return;
+    if(t!==token) return;
 
-    // сначала ставим картинки
-    left.src  = elements[prev].src;
-    right.src = elements[next].src;
+    setSide(left, elements[prev].src);
+    setSide(right, elements[next].src);
     showCenter(elements[i]);
 
-    // “второе кольцо” догружаем в фоне
-    preload(elements[(prev - 1 + elements.length) % elements.length].src);
-    preload(elements[(next + 1) % elements.length].src);
+    preload(elements[(prev-1+elements.length)%elements.length].src);
+    preload(elements[(next+1)%elements.length].src);
 
-    // ✅ если текущая горизонтальная — скрываем боковые полностью
     const hideSides = await getIsWide(elements[i].src);
-    if(t !== token) return;
-
+    if(t!==token) return;
     gallery.classList.toggle("rg-wide", hideSides);
   }
 
-  prevBtn.addEventListener("click", ()=>show(index - 1));
-  nextBtn.addEventListener("click", ()=>show(index + 1));
-
-  // клавиши — только навигация
-  if(!window.__rgKeyHandler){
-    window.__rgKeyHandler = e=>{
-      const g = document.getElementById("rg-gallery");
-      if(!g || g.style.display === "none") return;
-      if(e.key === "ArrowRight") g.querySelector(".rg-next")?.click();
-      if(e.key === "ArrowLeft")  g.querySelector(".rg-prev")?.click();
-    };
-    document.addEventListener("keydown", window.__rgKeyHandler);
-  }
+  prevBtn.onclick=()=>show(index-1);
+  nextBtn.onclick=()=>show(index+1);
 
   show(0);
 })();
 </script>
+
+</body>
+</html>
+
