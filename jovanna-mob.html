@@ -1,7 +1,7 @@
 <div id="rg-gallery">
   <div id="rg-stage">
     <div id="rg-center">
-      <!-- ✅ LOADING поверх центра -->
+      <!-- ✅ (1) LOADING поверх центра -->
       <span class="rg-loading is-on" aria-hidden="true">loading...</span>
 
       <div class="rg-nav">
@@ -11,12 +11,6 @@
     </div>
   </div>
 </div>
-
-<!-- прогрев соединений (из 2-го кода) -->
-<link rel="dns-prefetch" href="//raw.githubusercontent.com">
-<link rel="preconnect" href="https://raw.githubusercontent.com" crossorigin>
-<link rel="dns-prefetch" href="//res.cloudinary.com">
-<link rel="preconnect" href="https://res.cloudinary.com" crossorigin>
 
 <style>
 @font-face{
@@ -34,12 +28,12 @@
 #rg-gallery{position:fixed;inset:0;background:#fcfcfc;z-index:9999;overflow:hidden}
 #rg-stage{position:absolute;inset:0;top:-60px;display:flex;align-items:center;justify-content:center;pointer-events:none}
 
-/* визуал/пропорции из 1-го кода */
+/* ✅ (2) фото БОЛЬШЕ, но nav/отступы те же */
 #rg-center{
   width:86vw;max-width:520px;
   height:62vh;max-height:560px;
   display:flex;align-items:center;justify-content:center;
-  position:relative;pointer-events:none;
+  position:relative;pointer-events:none
 }
 
 .rg-main{max-width:100%;max-height:100%;object-fit:contain;display:block;pointer-events:auto}
@@ -47,7 +41,7 @@
 .rg-nav{position:absolute;left:50%;bottom:-65px;transform:translateX(-50%);display:flex;gap:25px;pointer-events:auto}
 .rg-btn{font-size:1.6rem;background:none;border:none;color:#666;cursor:pointer;padding:4px 8px;user-select:none;-webkit-tap-highlight-color:transparent}
 
-/* LOADING — как в 1-м коде */
+/* ✅ (3) LOADING — mix blend + SegoeUI 300 + size 10 */
 .rg-loading{
   position:absolute;
   left:50%; top:50%;
@@ -76,11 +70,9 @@
   if(!gallery||gallery.dataset.rgInit==="1")return;
   gallery.dataset.rgInit="1";
 
-  // =========================
-  // МАТЕРИАЛЫ (из 2-го кода)
-  // =========================
-  const originals=[
-    "https://raw.githubusercontent.com/tsyomiki-collab/jovan-s/main/1.png",
+  // ✅ (4) твои элементы
+  const elements=[
+      "https://raw.githubusercontent.com/tsyomiki-collab/jovan-s/main/1.png",
     "https://raw.githubusercontent.com/tsyomiki-collab/jovan-s/main/2.png",
     "https://raw.githubusercontent.com/tsyomiki-collab/jovan-s/main/3.png",
     "https://raw.githubusercontent.com/tsyomiki-collab/jovan-s/main/4.png",
@@ -97,23 +89,6 @@
     "https://raw.githubusercontent.com/tsyomiki-collab/jovan-s/main/15.png"
   ];
 
-  // Cloudinary fetch под размер центра (из 2-го кода)
-  const CLOUD="dmtnse4sz";
-  const DPR=Math.max(1, Math.min(3, window.devicePixelRatio||1));
-  const centerCSSMax=520;
-  const centerPx=Math.min(centerCSSMax, Math.round(window.innerWidth*0.86));
-  const W=Math.min(2000, Math.ceil(centerPx*DPR*1.6));
-
-  function cldFetch(url){
-    return `https://res.cloudinary.com/${CLOUD}/image/fetch/f_auto,q_auto:eco,fl_progressive,fl_lossy,w_${W}/${encodeURIComponent(url)}`;
-  }
-
-  // elements = материалы со 2-го кода
-  const elements = originals.map(u=>({type:"img", src: cldFetch(u)}));
-
-  // =========================
-  // ВИЗУАЛ + ФУНКЦИОНАЛ (из 1-го кода)
-  // =========================
   let index=0, token=0;
 
   const center=document.getElementById("rg-center");
@@ -122,7 +97,7 @@
   const nav=center.querySelector(".rg-nav");
   const loadingEl=center.querySelector(".rg-loading");
 
-  // кэш нод и “готовности”
+  // ✅ (5) кэш нод и “готовности”
   const nodeCache=new Map();   // src -> <img>
   const readyCache=new Map();  // src -> Promise
   const ric = window.requestIdleCallback || ((cb)=>setTimeout(()=>cb({timeRemaining:()=>0}), 120));
@@ -148,7 +123,7 @@
     return img;
   }
 
-  // preload + decode (чтобы не “белый экран”)
+  // ✅ (6) preload + decode (чтобы не “белый экран”)
   function ensureReady(src, priority){
     if(readyCache.has(src)) return readyCache.get(src);
 
@@ -197,16 +172,16 @@
     if(i>=n)i=0;
     index=i;
 
-    setLoading(true);
-    preloadAround(i);
+    setLoading(true);          // ✅ отчёт: включаю лоадинг сразу
+    preloadAround(i);          // ✅ отчёт: начинаю прогрев соседей
 
     const src = elements[i].src;
-    await ensureReady(src, "high");
+    await ensureReady(src, "high");  // ✅ отчёт: жду load+decode текущего
     if(t!==token) return;
 
     clearCenterKeepUI();
-    center.insertBefore(ensureImg(src), nav);
-    setLoading(false);
+    center.insertBefore(ensureImg(src), nav); // ✅ отчёт: монтирую картинку
+    setLoading(false);                        // ✅ отчёт: выключаю лоадинг
   }
 
   prevBtn.onclick=()=>show(index-1);
