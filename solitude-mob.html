@@ -1,0 +1,157 @@
+<div id="rg-gallery">
+  <div id="rg-stage">
+    <div id="rg-center">
+      <div class="rg-nav">
+        <button class="rg-btn rg-prev" type="button">⟨</button>
+        <button class="rg-btn rg-next" type="button">⟩</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<link rel="dns-prefetch" href="//raw.githubusercontent.com">
+<link rel="preconnect" href="https://raw.githubusercontent.com" crossorigin>
+<link rel="dns-prefetch" href="//res.cloudinary.com">
+<link rel="preconnect" href="https://res.cloudinary.com" crossorigin>
+
+<style>
+#rg-gallery{position:fixed;inset:0;background:#fcfcfc;z-index:9999;overflow:hidden}
+#rg-stage{position:absolute;inset:0;top:-60px;display:flex;align-items:center;justify-content:center;pointer-events:none}
+#rg-center{width:74vw;max-width:430px;height:50vh;max-height:460px;display:flex;align-items:center;justify-content:center;position:relative;pointer-events:none}
+.rg-main{max-width:100%;max-height:100%;object-fit:contain;display:block;pointer-events:auto}
+.rg-nav{position:absolute;left:50%;bottom:-65px;transform:translateX(-50%);display:flex;gap:25px;pointer-events:auto}
+.rg-btn{font-size:1.6rem;background:none;border:none;color:#666;cursor:pointer;padding:4px 8px;user-select:none;-webkit-tap-highlight-color:transparent}
+</style>
+
+<script>
+(function(){
+  const gallery=document.getElementById("rg-gallery");
+  if(!gallery||gallery.dataset.rgInit==="1")return;
+  gallery.dataset.rgInit="1";
+
+  // ТВОИ ОРИГИНАЛЬНЫЕ ССЫЛКИ (как были)
+  const original=[
+    "https://raw.githubusercontent.com/tsyomiki-collab/solitude/main/1.jpeg",
+    "https://raw.githubusercontent.com/tsyomiki-collab/solitude/main/2.jpeg",
+    "https://raw.githubusercontent.com/tsyomiki-collab/solitude/main/3.jpeg",
+    "https://raw.githubusercontent.com/tsyomiki-collab/solitude/main/4.jpeg",
+    "https://raw.githubusercontent.com/tsyomiki-collab/solitude/main/5.jpeg",
+    "https://raw.githubusercontent.com/tsyomiki-collab/solitude/main/6.jpeg",
+    "https://raw.githubusercontent.com/tsyomiki-collab/solitude/main/7.jpg",
+    "https://raw.githubusercontent.com/tsyomiki-collab/solitude/main/8.jpg",
+    "https://raw.githubusercontent.com/tsyomiki-collab/solitude/main/9.jpg",
+    "https://raw.githubusercontent.com/tsyomiki-collab/solitude/main/10.jpg",
+    "https://raw.githubusercontent.com/tsyomiki-collab/solitude/main/11.jpg",
+    "https://raw.githubusercontent.com/tsyomiki-collab/solitude/main/12.jpg"
+  ];
+
+  // ⚡️ Cloudinary fetch (сжимает/уменьшает на лету)
+  const CLOUD = "dmtnse4sz";
+  const DPR = Math.max(1, Math.min(3, window.devicePixelRatio || 1));
+  const TARGET_W = Math.min(1400, Math.ceil(430 * DPR * 1.35)); // запас под ретину/масштаб
+
+  function cldFetch(url){
+    // f_auto = webp/avif где можно, q_auto = авто-качество, fl_progressive = прогрессивный jpg
+    // w_... = уменьшаем до нужной ширины
+    return `https://res.cloudinary.com/${CLOUD}/image/fetch/f_auto,q_auto,fl_progressive,w_${TARGET_W}/${encodeURIComponent(url)}`;
+  }
+
+  // превращаем в элементы (уже лёгкие ссылки)
+  const elements = original.map(u => ({ type:'img', src: cldFetch(u) }));
+
+  let index=0, token=0;
+  const center=document.getElementById("rg-center");
+  const prevBtn=gallery.querySelector(".rg-prev");
+  const nextBtn=gallery.querySelector(".rg-next");
+
+  const nodeCache=new Map();   // src -> <img>
+  const readyCache=new Map();  // src -> Promise
+  const ric = window.requestIdleCallback || ((cb)=>setTimeout(()=>cb({timeRemaining:()=>0}), 120));
+
+  function clearCenter(){
+    const nav=center.querySelector(".rg-nav");
+    center.innerHTML="";
+    if(nav) center.appendChild(nav);
+  }
+
+  function ensureImg(src){
+    if(nodeCache.has(src)) return nodeCache.get(src);
+    const img = new Image();
+    img.className="rg-main";
+    img.decoding="async";
+    img.loading="eager";
+    img.src = src;
+    nodeCache.set(src, img);
+    return img;
+  }
+
+  function preloadImage(src){
+    if(!src) return Promise.resolve();
+    if(readyCache.has(src)) return readyCache.get(src);
+
+    const img = ensureImg(src);
+    const p = new Promise((resolve)=>{
+      const done = async ()=>{
+        if(img.decode){
+          try{ await img.decode(); }catch(e){}
+        }
+        resolve();
+      };
+      if(img.complete){ done(); return; }
+      img.onload = done;
+      img.onerror = done;
+    });
+
+    readyCache.set(src, p);
+    return p;
+  }
+
+  function preloadAround(i){
+    const n=elements.length;
+    const prev=(i-1+n)%n;
+    const next=(i+1)%n;
+
+    preloadImage(elements[i].src);
+    preloadImage(elements[prev].src);
+    preloadImage(elements[next].src);
+
+    ric(()=>{
+      preloadImage(elements[(prev-1+n)%n].src);
+      preloadImage(elements[(next+1)%n].src);
+    });
+  }
+
+  function showCenter(el){
+    clearCenter();
+    center.appendChild(ensureImg(el.src));
+  }
+
+  async function show(i){
+    const t=++token;
+    const n=elements.length;
+
+    if(i<0)i=n-1;
+    if(i>=n)i=0;
+    index=i;
+
+    preloadAround(i);
+    await preloadImage(elements[i].src);
+    if(t!==token) return;
+
+    showCenter(elements[i]);
+  }
+
+  prevBtn.onclick=()=>show(index-1);
+  nextBtn.onclick=()=>show(index+1);
+
+  let startX=0;
+  gallery.addEventListener("touchstart",e=>{startX=e.touches[0].clientX},{passive:true});
+  gallery.addEventListener("touchend",e=>{
+    const d=e.changedTouches[0].clientX-startX;
+    if(Math.abs(d)>40){ d<0?show(index+1):show(index-1); }
+  },{passive:true});
+
+  preloadAround(0);
+  show(0);
+})();
+</script>
