@@ -1,0 +1,207 @@
+<div id="rg-gallery">
+  <div id="rg-stage">
+    <div id="rg-center">
+      <div class="rg-nav">
+        <button class="rg-btn rg-prev" type="button">⟨</button>
+        <button class="rg-btn rg-next" type="button">⟩</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+#rg-gallery{position:fixed;inset:0;background:#fcfcfc;z-index:9999;overflow:hidden}
+#rg-stage{position:absolute;inset:0;top:-60px;display:flex;align-items:center;justify-content:center;pointer-events:none}
+#rg-center{width:74vw;max-width:430px;height:50vh;max-height:460px;display:flex;align-items:center;justify-content:center;position:relative;pointer-events:none}
+.rg-main{max-width:100%;max-height:100%;object-fit:contain;display:block;pointer-events:auto}
+.rg-nav{position:absolute;left:50%;bottom:-65px;transform:translateX(-50%);display:flex;gap:25px;pointer-events:auto}
+.rg-btn{font-size:1.6rem;background:none;border:none;color:#666;cursor:pointer;padding:4px 8px;user-select:none;-webkit-tap-highlight-color:transparent}
+</style>
+
+<script>
+(function(){
+  const gallery=document.getElementById("rg-gallery");
+  if(!gallery||gallery.dataset.rgInit==="1")return;
+  gallery.dataset.rgInit="1";
+
+  const elements=[
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/yuki/main/1.png"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/yuki/main/2.png"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/yuki/main/3.png"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/yuki/main/4.png"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/yuki/main/5.png"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/yuki/main/6.png"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/yuki/main/7.png"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/yuki/main/8.png"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/yuki/main/9.png"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/yuki/main/10.png"},
+    {
+      type:'video',
+      src:"https://res.cloudinary.com/dmtnse4sz/video/upload/v1769448409/%E5%8D%83%E8%91%89%E9%9B%84%E5%96%9C_Yuki_Chiba_%E3%83%BC_%E3%83%81%E3%82%A7%E3%83%BC%E3%83%B3%E3%81%8C%E6%AD%8C%E3%81%86_Chain_Ga_Utau_Official_Music_Video_-_%E5%8D%83%E8%91%89_%E9%9B%84%E5%96%9C_Yuki_Chiba_1080p_h264_youtube_koptk0.mp4",
+      poster:"https://raw.githubusercontent.com/tsyomiki-collab/yuki/main/Screenshot%202026-01-26%20at%2021.32.09.png"
+    }
+  ];
+
+  let index=0,token=0,currentVideo=null;
+  const center=document.getElementById("rg-center");
+  const prevBtn=gallery.querySelector(".rg-prev");
+  const nextBtn=gallery.querySelector(".rg-next");
+  const cache=new Map();
+
+  let soundUnlocked=false;
+
+  async function unlockSound(){
+    soundUnlocked=true;
+    if(currentVideo){
+      currentVideo.muted=false;
+      currentVideo.volume=1;
+      try{ await currentVideo.play(); }catch(e){}
+    }
+  }
+
+  function armUnlock(){
+    const once = (fn) => async () => { try{ await fn(); } finally { disarm(); } };
+    const onPointer = once(unlockSound);
+    const onTouch   = once(unlockSound);
+    const onKey     = once(unlockSound);
+
+    function disarm(){
+      gallery.removeEventListener("pointerdown", onPointer);
+      gallery.removeEventListener("touchstart", onTouch);
+      window.removeEventListener("keydown", onKey);
+    }
+
+    gallery.addEventListener("pointerdown", onPointer, {once:true});
+    gallery.addEventListener("touchstart", onTouch, {once:true, passive:true});
+    window.addEventListener("keydown", onKey, {once:true});
+  }
+  armUnlock();
+
+  function preloadImage(src){
+    if(!src)return Promise.resolve();
+    if(cache.has(src))return cache.get(src);
+    const p=new Promise(r=>{
+      const i=new Image();
+      i.decoding="async";
+      i.onload=i.onerror=()=>r();
+      i.src=src;
+    });
+    cache.set(src,p);
+    return p;
+  }
+
+  function preloadVideo(src){
+    if(!src)return Promise.resolve();
+    const k="v:"+src;
+    if(cache.has(k))return cache.get(k);
+    const p=new Promise(r=>{
+      const v=document.createElement("video");
+      v.preload="metadata";
+      v.onloadedmetadata=v.onerror=()=>r();
+      v.src=src;
+    });
+    cache.set(k,p);
+    return p;
+  }
+
+  function preloadElement(el){
+    return el.type==="video"
+      ? Promise.all([preloadImage(el.poster),preloadVideo(el.src)])
+      : preloadImage(el.src);
+  }
+
+  function clearCenter(){
+    const nav=center.querySelector(".rg-nav");
+    center.innerHTML="";
+    if(nav)center.appendChild(nav);
+  }
+
+  async function startVideo(v){
+    if(soundUnlocked){
+      v.muted=false;
+      v.volume=1;
+      try{ await v.play(); return; }catch(e){}
+    }
+
+    v.muted=true;
+    v.volume=1;
+    try{ await v.play(); }catch(e){}
+  }
+
+  function showCenter(el){
+    clearCenter();
+    if(currentVideo){ currentVideo.pause(); currentVideo=null; }
+
+    if(el.type==="img"){
+      const img=document.createElement("img");
+      img.src=el.src;
+      img.className="rg-main";
+      img.decoding="async";
+      img.loading="eager";
+      center.appendChild(img);
+      return;
+    }
+
+    const v=document.createElement("video");
+    v.className="rg-main";
+    v.src=el.src;
+    if(el.poster) v.poster=el.poster;
+
+    v.autoplay=true;
+    v.loop=true;
+    v.controls=false;
+    v.playsInline=true;
+    v.setAttribute("playsinline","");
+    v.setAttribute("webkit-playsinline","");
+
+    v.preload="metadata";
+
+    v.setAttribute("controlsList","nodownload noplaybackrate noremoteplayback");
+    v.setAttribute("disablePictureInPicture","");
+    v.setAttribute("disableRemotePlayback","");
+
+    center.appendChild(v);
+    currentVideo=v;
+
+    try{ v.load(); }catch(e){}
+    startVideo(v);
+  }
+
+  async function show(i){
+    const t=++token;
+    const n=elements.length;
+
+    if(i<0)i=n-1;
+    if(i>=n)i=0;
+    index=i;
+
+    const prev=(i-1+n)%n;
+    const next=(i+1)%n;
+
+    await Promise.all([
+      preloadElement(elements[i]),
+      preloadElement(elements[prev]),
+      preloadElement(elements[next])
+    ]);
+
+    if(t!==token) return;
+
+    showCenter(elements[i]);
+
+    preloadElement(elements[(prev-1+n)%n]);
+    preloadElement(elements[(next+1)%n]);
+  }
+
+  prevBtn.onclick=()=>show(index-1);
+  nextBtn.onclick=()=>show(index+1);
+
+  let startX=0;
+  gallery.addEventListener("touchstart",e=>{startX=e.touches[0].clientX},{passive:true});
+  gallery.addEventListener("touchend",e=>{
+    const d=e.changedTouches[0].clientX-startX;
+    if(Math.abs(d)>40){ d<0?show(index+1):show(index-1); }
+  },{passive:true});
+
+  show(0);
+})();
+</script>
