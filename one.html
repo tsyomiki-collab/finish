@@ -3,12 +3,16 @@
 
   <div class="rg-wrapper">
     <div class="rg-sideSlot">
+      <span class="rg-loading" aria-hidden="true">loading...</span>
       <img id="rg-left" class="rg-side" alt="">
     </div>
 
-    <div id="rg-center" class="rg-centerSlot"></div>
+    <div id="rg-center" class="rg-centerSlot">
+      <span class="rg-loading is-on" aria-hidden="true">loading...</span>
+    </div>
 
     <div class="rg-sideSlot">
+      <span class="rg-loading" aria-hidden="true">loading...</span>
       <img id="rg-right" class="rg-side" alt="">
     </div>
   </div>
@@ -17,6 +21,18 @@
 </div>
 
 <style>
+@font-face{
+  font-family:"SegoeUI";
+  src:
+    local("Segoe UI Light"),
+    url("https://c.s-microsoft.com/static/fonts/segoe-ui/west-european/light/latest.woff2") format("woff2"),
+    url("https://c.s-microsoft.com/static/fonts/segoe-ui/west-european/light/latest.woff") format("woff"),
+    url("https://c.s-microsoft.com/static/fonts/segoe-ui/west-european/light/latest.ttf") format("truetype");
+  font-weight:300;
+  font-style:normal;
+  font-display:swap;
+}
+
 #rg-gallery{
   position:fixed;
   inset:0;
@@ -37,16 +53,18 @@
 }
 
 .rg-sideSlot{
+  position:relative; /* ✅ для лоадинга */
   width:360px;
   height:330px;
   display:flex;
   align-items:center;
   justify-content:center;
   overflow:hidden;
-  margin:0 -290px;   /* сближаем боковые к центру */
+  margin:0 -290px;
 }
 
 .rg-centerSlot{
+  position:relative; /* ✅ для лоадинга */
   width:min(1180px, 70vw);
   height:735px;
   display:flex;
@@ -70,18 +88,39 @@
   display:block;
 }
 
+/* loading... */
+.rg-loading{
+  position:absolute;
+  left:50%;
+  top:50%;
+  transform:translate(-50%,-50%);
+  font-family:"SegoeUI","Segoe UI",-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif;
+  font-weight:300;
+  font-size:14px;
+  letter-spacing:.01em;
+  line-height:16px;
+  color:#fff;
+  mix-blend-mode:difference;
+  opacity:.9;
+  pointer-events:none;
+  user-select:none;
+  display:none;
+}
+.rg-loading.is-on{ display:block; }
+
+.rg-side.is-loading,
+.rg-main.is-loading{ opacity:0; }
+
 .rg-btn{
   position:fixed;
   top:50%;
   transform:translateY(-50%);
-
   width:120px;
-  height: 120px;
+  height:120px;
   display:flex;
   align-items:center;
   justify-content:center;
   box-sizing:border-box;
-
   font-size:3rem;
   line-height:1;
   padding:0;
@@ -90,7 +129,6 @@
   color:#666;
   cursor:pointer;
   user-select:none;
-
   appearance:none;
   -webkit-appearance:none;
   -webkit-tap-highlight-color:transparent;
@@ -100,10 +138,6 @@
 .rg-btn:focus-visible{
   outline:2px solid rgba(0,0,0,.25);
   outline-offset:3px;
-}
-
-.rg-btn:active{
-  transform:translateY(-50%);
 }
 
 .rg-prev{ left:80px; }
@@ -126,7 +160,6 @@
   if(gallery.dataset.rgInit === "1") return;
   gallery.dataset.rgInit = "1";
 
-  // ✅ НОВЫЕ МАТЕРИАЛЫ (one-pulse), БЕЗ ВИДЕО
   const elements=[
     {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/one-pulse/main/1-3.png"},
     {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/one-pulse/main/2-3.png"},
@@ -157,13 +190,13 @@
   const cache = new Map();
 
   function preload(url){
-    if(!url) return Promise.resolve();
+    if(!url) return Promise.resolve(false);
     if(cache.has(url)) return cache.get(url);
 
     const p = new Promise(resolve=>{
       const img = new Image();
       img.decoding = "async";
-      img.onload = () => resolve(true);
+      img.onload  = () => resolve(true);
       img.onerror = () => resolve(false);
       img.src = url;
     });
@@ -172,14 +205,39 @@
     return p;
   }
 
+  function setLoading(slotEl, on){
+    const l = slotEl.querySelector(".rg-loading");
+    if(l) l.classList.toggle("is-on", !!on);
+  }
+
+  function setSide(imgEl, src){
+    const slot = imgEl.parentElement;
+    setLoading(slot, true);
+
+    imgEl.classList.add("is-loading");
+    imgEl.decoding = "async";
+    imgEl.loading = "eager";
+    imgEl.fetchPriority = "low";
+
+    imgEl.onload = ()=>{ imgEl.classList.remove("is-loading"); setLoading(slot,false); };
+    imgEl.onerror= ()=>{ imgEl.classList.remove("is-loading"); setLoading(slot,false); };
+
+    imgEl.src = src || "";
+  }
+
   function showCenter(el){
-    // без видео — всегда img
-    center.innerHTML = "";
+    setLoading(center, true);
+    center.innerHTML = '<span class="rg-loading is-on" aria-hidden="true">loading...</span>';
+
     const img = document.createElement("img");
-    img.className = "rg-main";
+    img.className = "rg-main is-loading";
     img.decoding = "async";
     img.loading = "eager";
     img.fetchPriority = "high";
+
+    img.onload = ()=>{ img.classList.remove("is-loading"); setLoading(center,false); };
+    img.onerror= ()=>{ img.classList.remove("is-loading"); setLoading(center,false); };
+
     img.src = el.src;
     center.appendChild(img);
   }
@@ -194,6 +252,11 @@
     const prev = (i - 1 + elements.length) % elements.length;
     const next = (i + 1) % elements.length;
 
+    // показываем лоадеры сразу
+    setLoading(center, true);
+    setLoading(left.parentElement, true);
+    setLoading(right.parentElement, true);
+
     await Promise.all([
       preload(elements[i].src),
       preload(elements[prev].src),
@@ -202,19 +265,25 @@
 
     if(t !== token) return;
 
-    left.src  = elements[prev].src;
-    right.src = elements[next].src;
+    setSide(left,  elements[prev].src);
+    setSide(right, elements[next].src);
     showCenter(elements[i]);
 
-    // “второе кольцо” догружаем в фоне
-    preload(elements[(prev - 1 + elements.length) % elements.length].src);
-    preload(elements[(next + 1) % elements.length].src);
+    // второе кольцо — в фоне (не мешает свайпу/кликам)
+    const prev2 = (prev - 1 + elements.length) % elements.length;
+    const next2 = (next + 1) % elements.length;
+
+    const bg = ()=>{
+      preload(elements[prev2].src);
+      preload(elements[next2].src);
+    };
+    if("requestIdleCallback" in window) requestIdleCallback(bg, {timeout:600});
+    else setTimeout(bg, 0);
   }
 
   prevBtn.addEventListener("click", ()=>show(index - 1));
   nextBtn.addEventListener("click", ()=>show(index + 1));
 
-  // клавиши — только навигация, ничего не закрывает
   if(!window.__rgKeyHandler){
     window.__rgKeyHandler = e=>{
       const g = document.getElementById("rg-gallery");
@@ -228,3 +297,4 @@
   show(0);
 })();
 </script>
+
