@@ -3,13 +3,18 @@
 
   <div class="rg-wrapper">
     <div class="rg-sideSlot">
-      <img id="rg-left" class="rg-side">
+      <span class="rg-loading" aria-hidden="true">loading...</span>
+      <img id="rg-left" class="rg-side" alt="">
     </div>
 
-    <div id="rg-center" class="rg-centerSlot"></div>
+    <div id="rg-center" class="rg-centerSlot">
+      <span class="rg-loading is-on" aria-hidden="true">loading...</span>
+      <!-- сюда вставится img/video -->
+    </div>
 
     <div class="rg-sideSlot">
-      <img id="rg-right" class="rg-side">
+      <span class="rg-loading" aria-hidden="true">loading...</span>
+      <img id="rg-right" class="rg-side" alt="">
     </div>
   </div>
 
@@ -37,16 +42,18 @@
 }
 
 .rg-sideSlot{
+  position:relative;            /* ✅ для лоадера */
   width:360px;
   height:330px;
   display:flex;
   align-items:center;
   justify-content:center;
   overflow:hidden;
-  margin:0 -290px;   /* сближаем боковые к центру */
+  margin:0 -290px;
 }
 
 .rg-centerSlot{
+  position:relative;            /* ✅ для лоадера */
   width:min(1180px, 70vw);
   height:735px;
   display:flex;
@@ -74,14 +81,12 @@
   position:fixed;
   top:50%;
   transform:translateY(-50%);
-
   width:120px;
-  height: 120px;
+  height:120px;
   display:flex;
   align-items:center;
   justify-content:center;
   box-sizing:border-box;
-
   font-size:3rem;
   line-height:1;
   padding:0;
@@ -90,7 +95,6 @@
   color:#666;
   cursor:pointer;
   user-select:none;
-
   appearance:none;
   -webkit-appearance:none;
   -webkit-tap-highlight-color:transparent;
@@ -101,10 +105,7 @@
   outline:2px solid rgba(0,0,0,.25);
   outline-offset:3px;
 }
-
-.rg-btn:active{
-  transform:translateY(-50%);
-}
+.rg-btn:active{ transform:translateY(-50%); }
 
 .rg-prev{ left:80px; }
 .rg-next{ right:80px; }
@@ -118,19 +119,43 @@
 .rg-centerSlot, .rg-sideSlot { contain: layout paint size; }
 .rg-main { will-change: contents; }
 
-/* ✅ если текущий элемент горизонтальный — боковых НЕТ (и место не занимаем) */
-#rg-gallery.rg-wide .rg-sideSlot{
+/* ✅ если текущий элемент горизонтальный — боковых НЕТ */
+#rg-gallery.rg-wide .rg-sideSlot{ display:none; }
+
+/* loading... */
+.rg-loading{
+  position:absolute;
+  left:50%;
+  top:50%;
+  transform:translate(-50%,-50%);
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+  font-weight:300;              /* ✅ не 600 */
+  font-size:13px;
+  letter-spacing:.01em;
+  line-height:16px;
+  color:#000;
+  opacity:.55;
+  pointer-events:none;
+  user-select:none;
   display:none;
 }
+.rg-loading.is-on{ display:block; }
 
-/* подсказка для звука (когда браузер блокирует autoplay со звуком) */
+.rg-side.is-loading,
+.rg-main.is-loading{ opacity:0; }
+
+/* подсказка для звука */
 .rg-soundHint{
   position:absolute;
   left:50%;
   bottom:14px;
   transform:translateX(-50%);
   padding:10px 14px;
-  font:14px/1.1 system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+  font-weight:300;              /* ✅ 300 */
+  font-size:13px;
+  letter-spacing:.01em;
+  line-height:16px;
   border:1px solid rgba(0,0,0,.12);
   background:rgba(255,255,255,.92);
   border-radius:999px;
@@ -148,39 +173,47 @@
   if(!gallery||gallery.dataset.rgInit==="1")return;
   gallery.dataset.rgInit="1";
 
+  const elements=[
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/Grimaldi/main/1.jpg"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/Grimaldi/main/2.jpg"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/Grimaldi/main/3.jpg"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/Grimaldi/main/4.jpg"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/Grimaldi/main/5.jpg"},
+    {
+      type:'video',
+      src:"https://res.cloudinary.com/dmtnse4sz/video/upload/v1769860171/6_acmyrk.mov",
+      poster:"https://raw.githubusercontent.com/tsyomiki-collab/finish/main/Screenshot%202026-02-05%20at%2019.38.04.png"
+    },
+    {
+      type:'video',
+      src:"https://res.cloudinary.com/dmtnse4sz/video/upload/v1769860155/7_zb4vkq.mov",
+      poster:"https://raw.githubusercontent.com/tsyomiki-collab/finish/main/Screenshot%202026-02-05%20at%2019.39.59.png"
+    }
+  ];
 
-const elements=[
-  {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/Grimaldi/main/1.jpg"},
-  {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/Grimaldi/main/2.jpg"},
-  {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/Grimaldi/main/3.jpg"},
-  {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/Grimaldi/main/4.jpg"},
-  {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/Grimaldi/main/5.jpg"},
-
-  {
-    type:'video',
-    src:"https://res.cloudinary.com/dmtnse4sz/video/upload/v1769860171/6_acmyrk.mov",
-    poster:"https://raw.githubusercontent.com/tsyomiki-collab/finish/main/Screenshot%202026-02-05%20at%2019.38.04.png"
-  },
-  {
-    type:'video',
-    src:"https://res.cloudinary.com/dmtnse4sz/video/upload/v1769860155/7_zb4vkq.mov",
-    poster:"https://raw.githubusercontent.com/tsyomiki-collab/finish/main/Screenshot%202026-02-05%20at%2019.39.59.png"
-  }
-];
-
-
-  let index=0,token=0;
+  let index=0, token=0;
 
   const left=document.getElementById("rg-left");
   const right=document.getElementById("rg-right");
   const center=document.getElementById("rg-center");
   const prevBtn=gallery.querySelector(".rg-prev");
   const nextBtn=gallery.querySelector(".rg-next");
-
   if(!left||!right||!center||!prevBtn||!nextBtn) return;
 
-  const isWideCache=new Map();
+  // sound hint (если браузер блокирует autoplay со звуком)
+  const soundHint = document.createElement("button");
+  soundHint.type = "button";
+  soundHint.className = "rg-soundHint";
+  soundHint.textContent = "tap for sound";
+
+  const imgCache = new Map();
+  const isWideCache = new Map();
   let activeVideo=null;
+
+  function setLoading(slotEl, on){
+    const l = slotEl.querySelector(".rg-loading");
+    if(l) l.classList.toggle("is-on", !!on);
+  }
 
   function previewSrc(el){
     return el.type==="video" ? (el.poster||"") : (el.src||"");
@@ -191,72 +224,43 @@ const elements=[
     try{ activeVideo.pause(); }catch(e){}
     try{ activeVideo.removeAttribute("src"); activeVideo.load?.(); }catch(e){}
     activeVideo=null;
-  }
-
-  function showCenter(el){
-    stopVideo();
-    center.innerHTML="";
-
-    if(el.type==="video"){
-      const v=document.createElement("video");
-      v.className="rg-main";
-      v.src=el.src;
-      if(el.poster) v.poster=el.poster;
-
-      v.autoplay=true;
-      v.muted=false;        // ❗ просим звук
-      v.volume=1;
-      v.loop=true;
-      v.playsInline=true;
-      v.controls=false;
-      v.preload="auto";
-
-      v.setAttribute("playsinline","");
-      v.setAttribute("webkit-playsinline","");
-      v.setAttribute("controlslist","nodownload noplaybackrate noremoteplayback");
-      v.setAttribute("disablepictureinpicture","");
-
-      center.appendChild(v);
-      activeVideo=v;
-
-      // максимально ранний старт
-      const p = v.play();
-      if(p && typeof p.catch==="function") p.catch(()=>{});
-    }else{
-      const img=document.createElement("img");
-      img.className="rg-main";
-      img.decoding="async";
-      img.loading="eager";
-      img.fetchPriority="high";
-      img.src=el.src;
-      center.appendChild(img);
-    }
+    gallery.classList.remove("rg-needsTap");
+    soundHint.style.display="none";
   }
 
   function preloadImage(src){
-    return new Promise(r=>{
-      if(!src) return r();
+    if(!src) return Promise.resolve(false);
+    if(imgCache.has(src)) return imgCache.get(src);
+
+    const p = new Promise(r=>{
       const i=new Image();
       i.decoding="async";
-      i.onload=r; i.onerror=r;
+      i.onload=()=>r(true);
+      i.onerror=()=>r(false);
       i.src=src;
     });
+
+    imgCache.set(src,p);
+    return p;
   }
 
   function preloadVideoMeta(src){
     return new Promise(r=>{
-      if(!src) return r();
+      if(!src) return r(false);
       const v=document.createElement("video");
       v.preload="metadata";
-      v.onloadedmetadata=()=>r();
-      v.onerror=()=>r();
+      v.onloadedmetadata=()=>r(true);
+      v.onerror=()=>r(false);
       v.src=src;
     });
   }
 
   function preloadElement(el){
     if(el.type==="video"){
-      return Promise.all([preloadImage(el.poster), preloadVideoMeta(el.src)]);
+      return Promise.all([
+        preloadImage(el.poster),
+        preloadVideoMeta(el.src)
+      ]);
     }
     return preloadImage(el.src);
   }
@@ -283,6 +287,105 @@ const elements=[
     return getIsWideByImage(el.type==="video" ? el.poster : el.src);
   }
 
+  function setSide(imgEl, src){
+    const slot = imgEl.parentElement;
+    setLoading(slot, true);
+
+    imgEl.classList.add("is-loading");
+    imgEl.decoding="async";
+    imgEl.loading="eager";
+    imgEl.fetchPriority="low";
+
+    imgEl.onload=()=>{ imgEl.classList.remove("is-loading"); setLoading(slot,false); };
+    imgEl.onerror=()=>{ imgEl.classList.remove("is-loading"); setLoading(slot,false); };
+
+    imgEl.src = src || "";
+  }
+
+  function showCenter(el){
+    stopVideo();
+
+    // включаем лоадер
+    center.innerHTML = '<span class="rg-loading is-on" aria-hidden="true">loading...</span>';
+    center.appendChild(soundHint);
+
+    if(el.type==="video"){
+      const v=document.createElement("video");
+      v.className="rg-main is-loading";
+      v.src=el.src;
+      if(el.poster) v.poster=el.poster;
+
+      v.autoplay=true;
+      v.muted=false;        // просим звук (может быть заблокирован)
+      v.volume=1;
+      v.loop=true;
+      v.playsInline=true;
+
+      v.controls=false;     /* ✅ без панели */
+      v.preload="auto";
+
+      v.setAttribute("playsinline","");
+      v.setAttribute("webkit-playsinline","");
+      v.setAttribute("controlslist","nodownload noplaybackrate noremoteplayback");
+      v.setAttribute("disablepictureinpicture","");
+
+      // когда появится кадр — убираем loading
+      const ready = ()=>{
+        v.classList.remove("is-loading");
+        setLoading(center,false);
+      };
+      v.addEventListener("loadeddata", ready, {once:true});
+      v.addEventListener("canplay", ready, {once:true});
+      v.onerror = ()=>{ v.classList.remove("is-loading"); setLoading(center,false); };
+
+      center.appendChild(v);
+      activeVideo=v;
+
+      // пробуем autoplay со звуком, если не выйдет — запускаем muted и показываем кнопку
+      const tryPlay = async ()=>{
+        try{
+          v.muted=false;
+          await v.play();
+          gallery.classList.remove("rg-needsTap");
+          soundHint.style.display="none";
+        }catch(err){
+          try{
+            v.muted=true;
+            await v.play();
+          }catch(e){}
+          gallery.classList.add("rg-needsTap");
+          soundHint.style.display="block";
+        }
+      };
+
+      soundHint.onclick = async ()=>{
+        if(!activeVideo) return;
+        try{
+          activeVideo.muted=false;
+          await activeVideo.play();
+          gallery.classList.remove("rg-needsTap");
+          soundHint.style.display="none";
+        }catch(e){}
+      };
+
+      tryPlay();
+      return;
+    }
+
+    // img
+    const img=document.createElement("img");
+    img.className="rg-main is-loading";
+    img.decoding="async";
+    img.loading="eager";
+    img.fetchPriority="high";
+
+    img.onload=()=>{ img.classList.remove("is-loading"); setLoading(center,false); };
+    img.onerror=()=>{ img.classList.remove("is-loading"); setLoading(center,false); };
+
+    img.src=el.src;
+    center.appendChild(img);
+  }
+
   async function show(i){
     const t=++token;
 
@@ -293,6 +396,12 @@ const elements=[
     const p=(i-1+elements.length)%elements.length;
     const n=(i+1)%elements.length;
 
+    // мгновенно показываем loading на всех слотах
+    setLoading(left.parentElement, true);
+    setLoading(right.parentElement, true);
+    setLoading(center, true);
+
+    // прелоад текущий + соседи
     await Promise.all([
       preloadElement(elements[i]),
       preloadElement(elements[p]),
@@ -300,9 +409,19 @@ const elements=[
     ]);
     if(t!==token)return;
 
-    left.src=previewSrc(elements[p]);
-    right.src=previewSrc(elements[n]);
+    setSide(left,  previewSrc(elements[p]));
+    setSide(right, previewSrc(elements[n]));
     showCenter(elements[i]);
+
+    // второе кольцо в фоне
+    const p2=(p-1+elements.length)%elements.length;
+    const n2=(n+1)%elements.length;
+    const bg=()=>{
+      preloadElement(elements[p2]);
+      preloadElement(elements[n2]);
+    };
+    if("requestIdleCallback" in window) requestIdleCallback(bg, {timeout:600});
+    else setTimeout(bg, 0);
 
     const wide = await getIsWide(elements[i]);
     if(t!==token)return;
