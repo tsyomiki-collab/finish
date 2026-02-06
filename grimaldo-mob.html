@@ -1,6 +1,12 @@
 <div id="rg-gallery">
   <div id="rg-stage">
     <div id="rg-center">
+      <!-- LOADING (mix-blend) -->
+      <span class="rg-loading is-on" aria-hidden="true">loading...</span>
+
+      <!-- TAP (если звук заблокирован) -->
+      <button class="rg-tap rg-hidden" type="button">tap for sound</button>
+
       <div class="rg-nav">
         <button class="rg-btn rg-prev" type="button">⟨</button>
         <button class="rg-btn rg-next" type="button">⟩</button>
@@ -16,12 +22,78 @@
 <link rel="preconnect" href="https://res.cloudinary.com" crossorigin>
 
 <style>
+@font-face{
+  font-family:"SegoeUI";
+  src:
+    local("Segoe UI Light"),
+    url("https://c.s-microsoft.com/static/fonts/segoe-ui/west-european/light/latest.woff2") format("woff2"),
+    url("https://c.s-microsoft.com/static/fonts/segoe-ui/west-european/light/latest.woff") format("woff"),
+    url("https://c.s-microsoft.com/static/fonts/segoe-ui/west-european/light/latest.ttf") format("truetype");
+  font-weight:300;
+  font-style:normal;
+  font-display:swap;
+}
+
 #rg-gallery{position:fixed;inset:0;background:#fcfcfc;z-index:9999;overflow:hidden}
 #rg-stage{position:absolute;inset:0;top:-60px;display:flex;align-items:center;justify-content:center;pointer-events:none}
-#rg-center{width:74vw;max-width:430px;height:50vh;max-height:460px;display:flex;align-items:center;justify-content:center;position:relative;pointer-events:none}
+
+/* ✅ больше, но отступы/стрелки не трогаем */
+#rg-center{
+  width:86vw;max-width:520px;
+  height:62vh;max-height:560px;
+  display:flex;align-items:center;justify-content:center;
+  position:relative;pointer-events:none
+}
+
 .rg-main{max-width:100%;max-height:100%;object-fit:contain;display:block;pointer-events:auto}
+
+/* nav как было */
 .rg-nav{position:absolute;left:50%;bottom:-65px;transform:translateX(-50%);display:flex;gap:25px;pointer-events:auto}
 .rg-btn{font-size:1.6rem;background:none;border:none;color:#666;cursor:pointer;padding:4px 8px;user-select:none;-webkit-tap-highlight-color:transparent}
+
+/* ✅ LOADING (mix-blend, SegoeUI 300, 10) */
+.rg-loading{
+  position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
+  font-family:"SegoeUI","Segoe UI",-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif;
+  font-weight:300;
+  font-size:10px;
+  line-height:16px;
+  letter-spacing:0.01em;
+  white-space:nowrap;
+
+  color:#fff;
+  mix-blend-mode:difference;
+  opacity:.9;
+
+  pointer-events:none;
+  user-select:none;
+  display:none;
+}
+.rg-loading.is-on{display:block}
+
+/* ✅ TAP (SegoeUI 300, 10) */
+.rg-tap{
+  position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
+  z-index:5;
+
+  font-family:"SegoeUI","Segoe UI",-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif;
+  font-weight:300;
+  font-size:10px;
+  line-height:16px;
+  letter-spacing:0.01em;
+  white-space:nowrap;
+  color:#000;
+
+  background:rgba(255,255,255,.92);
+  border:1px solid rgba(0,0,0,.14);
+  border-radius:999px;
+  padding:8px 12px;
+
+  cursor:pointer;
+  user-select:none;
+  -webkit-tap-highlight-color:transparent;
+}
+.rg-hidden{display:none}
 </style>
 
 <script>
@@ -52,24 +124,39 @@
   const prevBtn=gallery.querySelector(".rg-prev");
   const nextBtn=gallery.querySelector(".rg-next");
 
+  const loading = center.querySelector(".rg-loading");
+  const tapBtn  = center.querySelector(".rg-tap");
+  const nav     = center.querySelector(".rg-nav");
+
   let index=0, token=0, currentVideo=null;
 
-  // кэш нод и "готовности"
   const nodeCache = new Map();   // key -> node
   const readyCache = new Map();  // key -> Promise
-
   const ric = window.requestIdleCallback || ((cb)=>setTimeout(()=>cb({timeRemaining:()=>0}), 120));
+
+  function setLoading(on){ loading.classList.toggle("is-on", !!on); }
+  function setTap(on){ tapBtn.classList.toggle("rg-hidden", !on); }
 
   function keyOf(el){ return el.type==="video" ? ("v:"+el.src) : ("i:"+el.src); }
 
-  function clearCenterKeepNav(){
-    const nav=center.querySelector(".rg-nav");
-    center.innerHTML="";
-    if(nav) center.appendChild(nav);
+  function clearCenterKeepUI(){
+    const keepLoading = loading;
+    const keepTap = tapBtn;
+    const keepNav = nav;
+
+    center.innerHTML = "";
+    center.appendChild(keepLoading);
+    center.appendChild(keepTap);
+    center.appendChild(keepNav);
+
+    if(currentVideo){
+      try{ currentVideo.pause(); }catch(e){}
+      currentVideo=null;
+    }
+    setTap(false);
   }
 
   function setImgPriority(img, priority){
-    // Chrome/Edge поддержат, Safari проигнорит
     try{ img.fetchPriority = priority; }catch(e){}
   }
 
@@ -99,9 +186,11 @@
     v.autoplay=true;
     v.loop=true;
     v.controls=false;
-    v.playsInline=true;
 
-    // достаточно быстро, но не перегружаем сеть
+    v.playsInline=true;
+    v.setAttribute("playsinline","");
+    v.setAttribute("webkit-playsinline","");
+
     v.preload="auto";
 
     v.setAttribute("controlsList","nodownload noplaybackrate noremoteplayback");
@@ -128,20 +217,20 @@
           if(img.decode){
             try{ await img.decode(); }catch(e){}
           }
-          resolve();
+          resolve(true);
         };
 
         if(img.complete){ done(); return; }
         img.onload = done;
         img.onerror = done;
       } else {
-        const v = ensureVideo(el);
-
-        // прогреть постер как изображение
+        // прогреть постер
         if(el.poster) ensureReady({type:"img", src: el.poster});
 
-        const done = ()=>resolve();
-        if(v.readyState >= 1){ resolve(); return; } // HAVE_METADATA
+        const v = ensureVideo(el);
+        const done = ()=>resolve(true);
+
+        if(v.readyState >= 1){ resolve(true); return; } // HAVE_METADATA
         v.onloadedmetadata = done;
         v.onerror = done;
       }
@@ -151,30 +240,57 @@
     return p;
   }
 
+  let audioUnlocked=false;
+
   async function tryPlayWithSound(v){
-    v.muted=false;
-    try{ await v.play(); return true; }catch(e){}
+    try{
+      v.muted=false;
+      v.volume=1;
+      await v.play();
+      return true;
+    }catch(e){}
     return false;
   }
 
-  async function startVideo(v){
-    if(await tryPlayWithSound(v)) return;
+  function armAudioUnlock(){
+    if(audioUnlocked) return;
 
-    v.muted=true;
-    try{ await v.play(); }catch(e){}
-
-    const enable=async()=>{
-      v.muted=false;
-      try{ await v.play(); }catch(e){}
-      v.removeEventListener("click", enable);
-      v.removeEventListener("pointerdown", enable);
-      window.removeEventListener("keydown", onKey);
+    const unlock = async ()=>{
+      audioUnlocked=true;
+      setTap(false);
+      if(currentVideo){
+        await tryPlayWithSound(currentVideo);
+      }
     };
-    const onKey=()=>enable();
 
-    v.addEventListener("click", enable, {once:true});
-    v.addEventListener("pointerdown", enable, {once:true});
-    window.addEventListener("keydown", onKey, {once:true});
+    window.addEventListener("pointerdown", unlock, {once:true, passive:true});
+    window.addEventListener("touchstart", unlock, {once:true, passive:true});
+    window.addEventListener("keydown", unlock, {once:true});
+  }
+
+  async function startVideo(v){
+    // если уже разлочили — сразу со звуком
+    if(audioUnlocked){
+      await tryPlayWithSound(v);
+      setTap(false);
+      return;
+    }
+
+    // пробуем со звуком
+    if(await tryPlayWithSound(v)){
+      audioUnlocked=true;
+      setTap(false);
+      return;
+    }
+
+    // иначе muted autoplay + tap
+    try{
+      v.muted=true;
+      v.volume=0;
+      await v.play();
+    }catch(e){}
+    setTap(true);
+    armAudioUnlock();
   }
 
   function stopCurrentVideo(){
@@ -184,16 +300,34 @@
   }
 
   function mount(el){
-    clearCenterKeepNav();
+    clearCenterKeepUI();
     stopCurrentVideo();
+    setLoading(true);
+    setTap(false);
 
     const node = ensureNode(el);
-    center.appendChild(node);
 
-    if(el.type==="video"){
-      currentVideo = node;
-      startVideo(node);
+    if(el.type==="img"){
+      if(node.complete){
+        setLoading(false);
+      }else{
+        const done=()=>setLoading(false);
+        node.addEventListener("load", done, {once:true});
+        node.addEventListener("error", done, {once:true});
+      }
+      center.insertBefore(node, nav);
+      return;
     }
+
+    // video
+    const done=()=>setLoading(false);
+    node.addEventListener("playing", done, {once:true});
+    node.addEventListener("canplay", done, {once:true});
+    node.addEventListener("error", done, {once:true});
+
+    center.insertBefore(node, nav);
+    currentVideo = node;
+    startVideo(node);
   }
 
   function preloadAround(i){
@@ -205,17 +339,14 @@
     const p = elements[prev];
     const nx = elements[next];
 
-    // приоритеты для картинок
     if(cur.type==="img") setImgPriority(ensureImg(cur.src), "high");
     if(p.type==="img") setImgPriority(ensureImg(p.src), "low");
     if(nx.type==="img") setImgPriority(ensureImg(nx.src), "low");
 
-    // текущий + соседи
     ensureReady(cur);
     ensureReady(p);
     ensureReady(nx);
 
-    // ещё по кругу — в idle
     ric(()=>{
       ensureReady(elements[(prev-1+n)%n]);
       ensureReady(elements[(next+1)%n]);
@@ -230,13 +361,29 @@
     if(i>=n)i=0;
     index=i;
 
+    setLoading(true);
+    setTap(false);
+
     preloadAround(i);
 
-    await ensureReady(elements[i]); // load + decode/metadata
+    await ensureReady(elements[i]);
     if(t!==token) return;
 
     mount(elements[i]);
   }
+
+  // тап по кнопке = попытка включить звук
+  tapBtn.addEventListener("click", async ()=>{
+    if(!currentVideo) return;
+    const ok = await tryPlayWithSound(currentVideo);
+    if(ok){
+      audioUnlocked=true;
+      setTap(false);
+    }else{
+      setTap(true);
+      armAudioUnlock();
+    }
+  });
 
   prevBtn.onclick=()=>show(index-1);
   nextBtn.onclick=()=>show(index+1);
