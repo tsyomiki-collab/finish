@@ -3,8 +3,10 @@
     <div id="rg-center">
       <span class="rg-loading is-on" aria-hidden="true">loading...</span>
 
-      <!-- tap for sound (появится только если звук заблокирован) -->
-      <span class="rg-unmute" role="button" aria-label="Tap for sound"></span>
+      <!-- ✅ НОВЫЙ TAP (как в твоём референс-коде) -->
+      <button class="rg-tap" type="button" aria-label="Tap to screen">
+        tap to screen
+      </button>
 
       <div class="rg-nav">
         <button class="rg-btn rg-prev" type="button">⟨</button>
@@ -68,30 +70,18 @@
 }
 .rg-loading.is-on{display:block}
 
-/* ✅ TAP FOR SOUND — тот же стиль (10px + blend difference) */
-.rg-unmute{
-  position:absolute;left:50%;top:50%;
-  transform:translate(-50%,-50%);
-  display:none;
-  z-index:5;
-  pointer-events:auto;
-  cursor:pointer;
-  user-select:none;
-  -webkit-tap-highlight-color:transparent;
-}
-.rg-unmute.is-on{display:block}
-.rg-unmute::after{
-  content:"tap for sound";
+/* ✅ TAP TO SCREEN — 1:1 как в твоём примере */
+.rg-tap{
+  position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
+  z-index:5;display:none;pointer-events:auto;cursor:pointer;
   font-family:"SegoeUI","Segoe UI",-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif;
   font-weight:300;
-  font-size:10px;
-  line-height:16px;
-  letter-spacing:0.01em;
-  white-space:nowrap;
-  color:#fff;
-  mix-blend-mode:difference;
-  opacity:.9;
+  font-size:8px;line-height:16px;letter-spacing:0.01em;white-space:nowrap;color:#000;
+  padding:6px 10px;background:rgba(255,255,255,.95);
+  border:1px solid rgba(0,0,0,.14);border-radius:999px;
+  -webkit-tap-highlight-color:transparent;
 }
+#rg-center.needs-tap .rg-tap{display:block}
 </style>
 
 <script>
@@ -126,7 +116,6 @@
     {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/midnight/main/6.jpg"},
     {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/midnight/main/7.jpg"},
     {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/midnight/main/8.jpg"},
-    
     {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/midnight/main/10.jpg"},
     {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/midnight/main/11.jpg"}
   ];
@@ -146,20 +135,19 @@
   const nextBtn=gallery.querySelector(".rg-next");
   const nav=center.querySelector(".rg-nav");
   const loadingEl=center.querySelector(".rg-loading");
-  const unmuteEl=center.querySelector(".rg-unmute");
+  const tapBtn=center.querySelector(".rg-tap");
 
-  // ✅ кэш нод и “готовности” — как в твоём первом коде
   const nodeCache=new Map();   // key -> node
   const readyCache=new Map();  // key -> Promise
   const ric = window.requestIdleCallback || ((cb)=>setTimeout(()=>cb({timeRemaining:()=>0}), 120));
 
   function setLoading(on){ loadingEl.classList.toggle("is-on", !!on); }
-  function setUnmute(on){ unmuteEl.classList.toggle("is-on", !!on); }
+  function setNeedsTap(on){ center.classList.toggle("needs-tap", !!on); }
 
   function clearCenterKeepUI(){
     center.innerHTML="";
     center.appendChild(loadingEl);
-    center.appendChild(unmuteEl);
+    center.appendChild(tapBtn);
     center.appendChild(nav);
   }
 
@@ -186,7 +174,6 @@
     const v=document.createElement("video");
     v.className="rg-main";
 
-    // важные атрибуты ДО src
     v.autoplay=true;
     v.loop=true;
     v.controls=false;
@@ -202,7 +189,6 @@
 
     if(el.poster) v.poster=el.poster;
 
-    // стартуем “как будто со звуком”, если блочат — покажем tap
     v.muted=false;
     v.volume=1;
 
@@ -212,7 +198,6 @@
     return v;
   }
 
-  // preload + decode (img) / metadata (video) — чтобы не “белый экран”
   function ensureReady(el, priority){
     const k=keyOf(el);
     if(readyCache.has(k)) return readyCache.get(k);
@@ -235,7 +220,6 @@
         return;
       }
 
-      // video: метаданные + постер
       if(el.poster) ensureReady({type:"img", src: el.poster}, "low");
 
       const v=document.createElement("video");
@@ -290,7 +274,7 @@
   }
 
   async function startVideoSmart(v){
-    setUnmute(false);
+    setNeedsTap(false);
 
     if(soundUnlocked){
       if(await tryPlayWithSound(v)) return true;
@@ -298,19 +282,18 @@
       if(await tryPlayWithSound(v)){ soundUnlocked=true; return true; }
     }
 
-    // не дали звук: запускаем muted и показываем “tap for sound”
     forceAutoplayMuted(v);
-    setUnmute(true);
+    setNeedsTap(true);
     return false;
   }
 
   async function unlockSoundNow(){
     soundUnlocked=true;
-    setUnmute(false);
+    setNeedsTap(false);
     if(!currentVideo) return;
     currentVideo.muted=false;
     currentVideo.volume=1;
-    try{ await currentVideo.play(); }catch(e){ setUnmute(true); }
+    try{ await currentVideo.play(); }catch(e){}
   }
 
   function stopVideo(){
@@ -326,13 +309,13 @@
     if(el.type==="img"){
       center.insertBefore(ensureImg(el.src), nav);
       setLoading(false);
+      setNeedsTap(false);
       return;
     }
 
     const v=ensureVideo(el);
     currentVideo=v;
 
-    // как только реально пошло — убираем loading
     const hide=()=>setLoading(false);
     v.addEventListener("playing", hide, {once:true});
     v.addEventListener("loadeddata", hide, {once:true});
@@ -350,7 +333,7 @@
     index=i;
 
     setLoading(true);
-    setUnmute(false);
+    setNeedsTap(false);
 
     preloadAround(i);
 
@@ -363,7 +346,6 @@
   prevBtn.onclick=()=>show(index-1);
   nextBtn.onclick=()=>show(index+1);
 
-  // свайп как в твоём коде
   let startX=0;
   gallery.addEventListener("touchstart",e=>{startX=e.touches[0].clientX},{passive:true});
   gallery.addEventListener("touchend",e=>{
@@ -371,10 +353,10 @@
     if(Math.abs(d)>40){ d<0?show(index+1):show(index-1) }
   },{passive:true});
 
-  // тап по “tap for sound”
-  unmuteEl.addEventListener("click",(e)=>{ e.preventDefault(); unlockSoundNow(); });
+  // ✅ тап-кнопка (как в референсе)
+  tapBtn.addEventListener("click",(e)=>{ e.preventDefault(); unlockSoundNow(); });
 
-  // первый жест на странице тоже разлочивает попытку звука
+  // любой первый жест тоже может разлочить звук
   (function armGlobalUnlockOnce(){
     const unlock=()=>{ unlockSoundNow(); cleanup(); };
     const cleanup=()=>{
