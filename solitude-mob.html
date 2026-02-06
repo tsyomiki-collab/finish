@@ -1,10 +1,12 @@
 <div id="rg-gallery">
   <div id="rg-stage">
-    <div id="rg-center">
+    <!-- ✅ сразу включаем лоадинг, чтобы на белом фоне не было “пусто” -->
+    <div id="rg-center" class="is-loading">
       <span class="rg-loading" aria-hidden="true">loading...</span>
 
-      <button class="rg-tap" type="button" aria-label="Tap to screen">
-        tap to screen
+      <!-- ✅ TAP (только если звук заблокирован) -->
+      <button class="rg-tap" type="button" aria-label="Tap for sound">
+        tap for sound
       </button>
 
       <div class="rg-nav">
@@ -17,6 +19,8 @@
 
 <link rel="dns-prefetch" href="//raw.githubusercontent.com">
 <link rel="preconnect" href="https://raw.githubusercontent.com" crossorigin>
+<link rel="dns-prefetch" href="//github.com">
+<link rel="preconnect" href="https://github.com" crossorigin>
 <link rel="dns-prefetch" href="//res.cloudinary.com">
 <link rel="preconnect" href="https://res.cloudinary.com" crossorigin>
 
@@ -43,6 +47,7 @@
   display:flex;align-items:center;justify-content:center;
   position:relative;
   pointer-events:none;
+  contain: layout paint size;
 }
 
 .rg-main{
@@ -114,9 +119,6 @@
   -webkit-tap-highlight-color:transparent;
 }
 #rg-center.needs-tap .rg-tap{display:block}
-
-/* чуть меньше лагов */
-#rg-center{contain: layout paint size;}
 </style>
 
 <script>
@@ -145,6 +147,7 @@
   const prevBtn=gallery.querySelector(".rg-prev");
   const nextBtn=gallery.querySelector(".rg-next");
   const tapBtn=center.querySelector(".rg-tap");
+  const nav=center.querySelector(".rg-nav");
 
   function setLoading(on){ center.classList.toggle("is-loading", !!on); }
   function setNeedsTap(on){ center.classList.toggle("needs-tap", !!on); }
@@ -155,17 +158,16 @@
 
   // ширина центра: min(92vw, 560px) + запас под ретину
   const centerPx = Math.min(560, Math.round(window.innerWidth * 0.92));
-  const TARGET_W = Math.min(2000, Math.ceil(centerPx * DPR * 1.25));
+  const TARGET_W = Math.min(2000, Math.ceil(centerPx * DPR * 1.35));
 
   function cldFetch(url){
     return `https://res.cloudinary.com/${CLOUD}/image/fetch/f_auto,q_auto:eco,fl_progressive,fl_lossy,w_${TARGET_W}/${encodeURIComponent(url)}`;
   }
 
-  // элементы (сейчас только img, но видео-логика уже встроена)
+  // элементы (img; видео-логика есть)
   const elements = original.map(u => ({ type:"img", src: cldFetch(u) }));
 
-  let index=0, token=0, currentVideo=null;
-
+  let index=0, currentVideo=null;
   const nodeCache=new Map();   // key -> node
   const readyCache=new Map();  // key -> Promise
   const ric = window.requestIdleCallback || ((cb)=>setTimeout(()=>cb({timeRemaining:()=>0}), 120));
@@ -173,26 +175,30 @@
   function keyOf(el){ return el.type==="video" ? ("v:"+el.src) : ("i:"+el.src); }
 
   function clearCenterKeepUI(){
-    const nav = center.querySelector(".rg-nav");
+    // не ломаем loading/tap/nav, чтобы не было “белого экрана со стрелками”
     const loading = center.querySelector(".rg-loading");
     const tap = center.querySelector(".rg-tap");
+    const nav = center.querySelector(".rg-nav");
+
     center.innerHTML="";
     if(loading) center.appendChild(loading);
     if(tap) center.appendChild(tap);
     if(nav) center.appendChild(nav);
   }
 
-  function ensureImg(src, isCurrent){
+  function ensureImg(src, priority){
     const k="i:"+src;
     if(nodeCache.has(k)) return nodeCache.get(k);
 
     const img=new Image();
     img.className="rg-main";
     img.decoding="async";
-    img.loading="eager";
-    img.src=src;
 
-    try{ img.fetchPriority = isCurrent ? "high" : "low"; }catch(e){}
+    // чуть быстрее на мобильных
+    img.loading = priority === "high" ? "eager" : "lazy";
+    try{ img.fetchPriority = priority || "auto"; }catch(e){}
+
+    img.src=src;
     nodeCache.set(k,img);
     return img;
   }
@@ -211,6 +217,13 @@
     v.playsInline=true;
     v.setAttribute("playsinline","");
     v.setAttribute("webkit-playsinline","");
+    v.setAttribute("autoplay","");
+    v.setAttribute("loop","");
+
+    // ✅ стартуем muted, чтобы autoplay точно сработал, потом пытаемся включить звук
+    v.muted=true;
+    v.volume=0;
+    v.setAttribute("muted","");
 
     v.preload="auto";
     v.setAttribute("controlsList","nodownload noplaybackrate noremoteplayback");
@@ -230,7 +243,7 @@
 
     const p = new Promise((resolve)=>{
       if(el.type==="img"){
-        const img=ensureImg(el.src, false);
+        const img=ensureImg(el.src, "low");
         const done = async ()=>{
           if(img.decode){
             try{ await img.decode(); }catch(e){}
@@ -257,36 +270,49 @@
   let soundUnlocked=false;
 
   async function tryPlayWithSound(v){
-    v.muted=false;
-    v.volume=1;
-    try{ await v.play(); return true; }catch(e){}
-    return false;
+    try{
+      v.muted=false;
+      v.volume=1;
+      await v.play();
+      return true;
+    }catch(e){
+      return false;
+    }
+  }
+
+  function armGlobalUnlock(){
+    const unlock = async ()=>{
+      soundUnlocked=true;
+      setNeedsTap(false);
+      if(!currentVideo) return;
+      await tryPlayWithSound(currentVideo);
+    };
+    gallery.addEventListener("pointerdown", unlock, {once:true, passive:true, capture:true});
+    gallery.addEventListener("touchstart", unlock, {once:true, passive:true, capture:true});
+    window.addEventListener("keydown", unlock, {once:true, capture:true});
   }
 
   async function startVideoSmart(v){
     setNeedsTap(false);
 
+    // 1) если уже разлочили — пробуем сразу со звуком
     if(soundUnlocked){
       if(await tryPlayWithSound(v)) return true;
-    }else{
+    } else {
+      // 2) иногда браузер разрешает — пробуем
       if(await tryPlayWithSound(v)) { soundUnlocked=true; return true; }
     }
 
-    v.muted=true;
-    v.volume=0;
-    try{ await v.play(); }catch(e){}
+    // 3) иначе запускаем muted, и показываем tap
+    try{
+      v.muted=true;
+      v.volume=0;
+      await v.play();
+    }catch(e){}
 
     setNeedsTap(true);
+    armGlobalUnlock();
     return false;
-  }
-
-  async function unlockSoundNow(){
-    soundUnlocked=true;
-    setNeedsTap(false);
-    if(!currentVideo) return;
-    currentVideo.muted=false;
-    currentVideo.volume=1;
-    try{ await currentVideo.play(); }catch(e){}
   }
 
   function stopCurrentVideo(){
@@ -295,34 +321,38 @@
     currentVideo=null;
   }
 
-  async function mount(el){
+  function mount(el){
     clearCenterKeepUI();
     stopCurrentVideo();
+
+    // ✅ лоадер включаем СРАЗУ (на белом фоне будет видно “loading…”)
     setLoading(true);
     setNeedsTap(false);
 
     if(el.type==="img"){
-      const img=ensureImg(el.src, true);
+      const img=ensureImg(el.src, "high");
 
       const finish=()=>setLoading(false);
       if(img.complete) finish();
-      else { img.onload=finish; img.onerror=finish; }
+      else {
+        img.addEventListener("load", finish, {once:true});
+        img.addEventListener("error", finish, {once:true});
+      }
 
-      center.insertBefore(img, center.querySelector(".rg-nav"));
+      center.insertBefore(img, nav);
       return;
     }
 
     const v=ensureVideo(el);
-    const done=()=>setLoading(false);
-
-    v.onplaying=done;
-    v.onloadeddata=done;
-    v.onerror=()=>{ setLoading(false); setNeedsTap(true); };
-
-    center.insertBefore(v, center.querySelector(".rg-nav"));
     currentVideo=v;
 
-    await startVideoSmart(v);
+    const done=()=>setLoading(false);
+    v.addEventListener("playing", done, {once:true});
+    v.addEventListener("canplay", done, {once:true});
+    v.addEventListener("error", done, {once:true});
+
+    center.insertBefore(v, nav);
+    startVideoSmart(v);
   }
 
   function preloadAround(i){
@@ -340,21 +370,17 @@
     });
   }
 
-  async function show(i){
-    const t=++token;
+  function show(i){
     const n=elements.length;
-
     if(i<0)i=n-1;
     if(i>=n)i=0;
     index=i;
 
-    setLoading(true);
-    preloadAround(i);
-
-    await ensureReady(elements[i]);
-    if(t!==token) return;
-
+    // ✅ монтируем сразу (без ожидания), чтобы не было “пусто”
     mount(elements[i]);
+
+    // ✅ прогрев соседних
+    preloadAround(i);
   }
 
   prevBtn.onclick=()=>show(index-1);
@@ -368,27 +394,20 @@
     if(Math.abs(d)>40){ d<0?show(index+1):show(index-1); }
   },{passive:true});
 
-  // tap-кнопка для звука (если видео появится)
-  tapBtn.addEventListener("click",(e)=>{ e.preventDefault(); unlockSoundNow(); });
-
-  // любой первый жест тоже разлочит звук (если видео появится)
-  (function armGlobalUnlock(){
-    const unlock=()=>{ unlockSoundNow(); cleanup(); };
-    const cleanup=()=>{
-      gallery.removeEventListener("pointerdown", unlock, true);
-      gallery.removeEventListener("touchstart", unlock, true);
-      window.removeEventListener("keydown", unlock, true);
-    };
-    gallery.addEventListener("pointerdown", unlock, {once:true, passive:true, capture:true});
-    gallery.addEventListener("touchstart", unlock, {once:true, passive:true, capture:true});
-    window.addEventListener("keydown", unlock, {once:true, capture:true});
-  })();
+  // tap-кнопка (если видео появится и звук заблокирован)
+  tapBtn.addEventListener("click", async (e)=>{
+    e.preventDefault();
+    soundUnlocked=true;
+    setNeedsTap(false);
+    if(currentVideo) await tryPlayWithSound(currentVideo);
+  });
 
   document.addEventListener("visibilitychange", ()=>{
     if(document.hidden && currentVideo) currentVideo.pause();
     else if(!document.hidden && currentVideo) startVideoSmart(currentVideo);
   });
 
+  // старт
   preloadAround(0);
   show(0);
 })();
