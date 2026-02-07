@@ -20,6 +20,12 @@
   <button class="rg-btn rg-next" type="button" aria-label="Next">⟩</button>
 </div>
 
+<!-- ✅ (1) ПРОГРЕВ: ускоряет первый показ -->
+<link rel="dns-prefetch" href="//raw.githubusercontent.com">
+<link rel="preconnect" href="https://raw.githubusercontent.com" crossorigin>
+<link rel="dns-prefetch" href="//c.s-microsoft.com">
+<link rel="preconnect" href="https://c.s-microsoft.com" crossorigin>
+
 <style>
 @font-face{
   font-family:"SegoeUI";
@@ -111,6 +117,9 @@
 }
 .rg-loading.is-on{ display:block; }
 
+/* ✅ (2) PATCH: лоадер всегда поверх */
+#rg-gallery .rg-loading{ z-index:999; }
+
 /* пока грузится — прячем (чтобы не мелькала старая) */
 .rg-side.is-loading,
 .rg-main.is-loading{ opacity:0; }
@@ -194,13 +203,15 @@
 
   const cache = new Map();
 
-  function preload(url){
+  /* ✅ (3) preload с приоритетом */
+  function preload(url, priority){
     if(!url) return Promise.resolve(false);
     if(cache.has(url)) return cache.get(url);
 
     const p = new Promise(resolve=>{
       const img = new Image();
       img.decoding = "async";
+      try{ if(priority) img.fetchPriority = priority; }catch(e){}
       img.onload  = () => resolve(true);
       img.onerror = () => resolve(false);
       img.src = url;
@@ -222,7 +233,7 @@
     imgEl.classList.add("is-loading");
     imgEl.decoding = "async";
     imgEl.loading = "eager";
-    imgEl.fetchPriority = "low";
+    try{ imgEl.fetchPriority = "low"; }catch(e){}   /* ✅ (4) */
 
     imgEl.onload = ()=>{ imgEl.classList.remove("is-loading"); setLoading(slot,false); };
     imgEl.onerror= ()=>{ imgEl.classList.remove("is-loading"); setLoading(slot,false); };
@@ -238,7 +249,7 @@
     img.className = "rg-main is-loading";
     img.decoding = "async";
     img.loading = "eager";
-    img.fetchPriority = "high";
+    try{ img.fetchPriority = "high"; }catch(e){}     /* ✅ (4) */
 
     img.onload = ()=>{ img.classList.remove("is-loading"); setLoading(center,false); };
     img.onerror= ()=>{ img.classList.remove("is-loading"); setLoading(center,false); };
@@ -257,15 +268,15 @@
     const prev = (i - 1 + elements.length) % elements.length;
     const next = (i + 1) % elements.length;
 
-    // loader сразу
+    // ✅ loader сразу (чтобы не было белого экрана со стрелками)
     setLoading(left.parentElement, true);
     setLoading(right.parentElement, true);
     setLoading(center, true);
 
     await Promise.all([
-      preload(elements[i].src),
-      preload(elements[prev].src),
-      preload(elements[next].src)
+      preload(elements[i].src, "high"),
+      preload(elements[prev].src, "low"),
+      preload(elements[next].src, "low")
     ]);
 
     if(t !== token) return;
@@ -279,8 +290,8 @@
     const next2 = (next + 1) % elements.length;
 
     const bg = ()=>{
-      preload(elements[prev2].src);
-      preload(elements[next2].src);
+      preload(elements[prev2].src, "low");
+      preload(elements[next2].src, "low");
     };
     if("requestIdleCallback" in window) requestIdleCallback(bg, {timeout:600});
     else setTimeout(bg, 0);
@@ -298,6 +309,11 @@
     };
     document.addEventListener("keydown", window.__rgKeyHandler);
   }
+
+  /* ✅ (5) быстрый старт */
+  preload(elements[0]?.src, "high");
+  preload(elements[1]?.src, "low");
+  preload(elements[2]?.src, "low");
 
   show(0);
 })();
