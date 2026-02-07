@@ -1,4 +1,4 @@
- <div id="rg-gallery">
+<div id="rg-gallery">
   <button class="rg-btn rg-prev" type="button" aria-label="Previous">⟨</button>
 
   <div class="rg-wrapper">
@@ -20,11 +20,16 @@
   <button class="rg-btn rg-next" type="button" aria-label="Next">⟩</button>
 </div>
 
-<!-- ✅ (1) ПРОГРЕВ -->
+<!-- ✅ ПРОГРЕВ -->
 <link rel="dns-prefetch" href="//raw.githubusercontent.com">
 <link rel="preconnect" href="https://raw.githubusercontent.com" crossorigin>
 <link rel="dns-prefetch" href="//c.s-microsoft.com">
 <link rel="preconnect" href="https://c.s-microsoft.com" crossorigin>
+
+<!-- ✅ PRELOAD первых кадров: ускоряет первый экран -->
+<link rel="preload" as="image" href="https://raw.githubusercontent.com/tsyomiki-collab/shell/main/1.jpg">
+<link rel="preload" as="image" href="https://raw.githubusercontent.com/tsyomiki-collab/shell/main/4.jpg">
+<link rel="preload" as="image" href="https://raw.githubusercontent.com/tsyomiki-collab/shell/main/2.jpg">
 
 <style>
 @font-face{
@@ -60,7 +65,7 @@
 }
 
 .rg-sideSlot{
-  position:relative; /* ✅ for loading */
+  position:relative;
   width:360px;
   height:330px;
   display:flex;
@@ -72,7 +77,7 @@
 }
 
 .rg-centerSlot{
-  position:relative; /* ✅ for loading */
+  position:relative;
   width:min(1180px, 70vw);
   height:735px;
   display:flex;
@@ -98,30 +103,43 @@
   transform-origin:center center;
 }
 
-/* loading... (mix-blend) */
+/* loading... */
 .rg-loading{
   position:absolute;
   left:50%;
   top:50%;
   transform:translate(-50%,-50%);
-
   font-family:"SegoeUI","Segoe UI",-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif;
   font-weight:300;
   font-size:14px;
   letter-spacing:.01em;
   line-height:16px;
 
-  color:#fff;
-  mix-blend-mode:difference;
-  opacity:.9;
-
   pointer-events:none;
   user-select:none;
   display:none;
+
+  /* ✅ фолбэк: чтобы loading не пропадал */
+  color:#111;
+  mix-blend-mode:normal;
+  opacity:.9;
 }
 .rg-loading.is-on{ display:block; }
 
-/* ✅ (2) PATCH: лоадер всегда поверх контента */
+/* ✅ если поддерживается — включаем твой difference */
+@supports (mix-blend-mode:difference){
+  .rg-loading{
+    color:#fff;
+    mix-blend-mode:difference;
+  }
+}
+
+/* ✅ до старта JS: показываем loading сразу */
+#rg-gallery:not([data-rg-init="1"]) .rg-loading{
+  display:block !important;
+}
+
+/* лоадер всегда поверх */
 #rg-gallery .rg-loading{ z-index:999; }
 
 /* пока грузится — прячем изображение */
@@ -203,7 +221,6 @@
 
   const preloadCache = new Map();
 
-  /* ✅ (3) preload с приоритетом + ✅ try/catch для iOS */
   function preload(src, priority){
     if(!src) return Promise.resolve(false);
     if(preloadCache.has(src)) return preloadCache.get(src);
@@ -278,9 +295,8 @@
     const p = (i - 1 + elements.length) % elements.length;
     const n = (i + 1) % elements.length;
 
-    const hideSides = !!elements[i].wide; /* ✅ (4) */
+    const hideSides = !!elements[i].wide;
 
-    // loading сразу: центр всегда, боковые только если будут видны
     setLoading(center, true);
     if(!hideSides){
       setLoading(left.parentElement, true);
@@ -292,15 +308,9 @@
       right.classList.remove("is-loading");
     }
 
-    // ✅ (3)(4) прелоадим текущую high, соседи low (но только если боковые видны)
-    const tasks = [
-      preload(elements[i].src, "high")
-    ];
+    const tasks = [preload(elements[i].src, "high")];
     if(!hideSides){
-      tasks.push(
-        preload(elements[p].src, "low"),
-        preload(elements[n].src, "low")
-      );
+      tasks.push(preload(elements[p].src, "low"), preload(elements[n].src, "low"));
     }
 
     await Promise.all(tasks);
@@ -312,10 +322,8 @@
     }
     showCenter(elements[i]);
 
-    // правило: если ЦЕНТРАЛЬНАЯ wide:true — скрываем боковые
     setSidesHidden(hideSides);
 
-    // второе кольцо — в фоне
     const p2 = (p - 1 + elements.length) % elements.length;
     const n2 = (n + 1) % elements.length;
     const bg = ()=>{
@@ -329,7 +337,6 @@
   prevBtn.addEventListener("click", ()=>show(index - 1));
   nextBtn.addEventListener("click", ()=>show(index + 1));
 
-  /* ✅ (5) быстрый старт */
   preload(elements[0]?.src, "high");
   preload(elements[1]?.src, "low");
   preload(elements[2]?.src, "low");
