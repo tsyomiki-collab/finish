@@ -20,9 +20,11 @@
   <button class="rg-btn rg-next" type="button" aria-label="Next">⟩</button>
 </div>
 
-<!-- ✅ (1) ПРОГРЕВ ДОМЕНОВ -->
+<!-- ✅ прогрев доменов -->
 <link rel="dns-prefetch" href="//raw.githubusercontent.com">
 <link rel="preconnect" href="https://raw.githubusercontent.com" crossorigin>
+<link rel="dns-prefetch" href="//github.com">
+<link rel="preconnect" href="https://github.com" crossorigin>
 <link rel="dns-prefetch" href="//res.cloudinary.com">
 <link rel="preconnect" href="https://res.cloudinary.com" crossorigin>
 <link rel="dns-prefetch" href="//c.s-microsoft.com">
@@ -118,14 +120,11 @@
   -webkit-appearance:none;
   -webkit-tap-highlight-color:transparent;
 }
-
 .rg-btn:focus{ outline:none; }
 .rg-btn:focus-visible{
   outline:2px solid rgba(0,0,0,.25);
   outline-offset:3px;
 }
-.rg-btn:active{ transform:translateY(-50%); }
-
 .rg-prev{ left:80px; }
 .rg-next{ right:80px; }
 
@@ -153,22 +152,61 @@
   letter-spacing:.01em;
   line-height:16px;
 
-  color:#fff;
-  mix-blend-mode:difference;
-  opacity:.9;
-
   pointer-events:none;
   user-select:none;
   display:none;
+
+  /* ✅ ФОЛБЭК: чтобы лоадер всегда был виден */
+  color:#111;
+  mix-blend-mode:normal;
+  opacity:.9;
 }
 .rg-loading.is-on{ display:block; }
 
-/* ✅ (2) PATCH: лоадер поверх всего */
+/* ✅ если blend-mode поддерживается — возвращаем твой эффект */
+@supports (mix-blend-mode:difference){
+  .rg-loading{
+    color:#fff;
+    mix-blend-mode:difference;
+  }
+}
+
+/* ✅ лоадер всегда поверх */
 #rg-gallery .rg-loading{ z-index:999; }
 
-/* пока грузится — прячем контент */
+/* ✅ пока грузится — прячем контент */
 .rg-side.is-loading,
 .rg-main.is-loading{ opacity:0; }
+
+/* ✅ пока JS не инициализировался — лоадеры видны сразу (убираем белый экран) */
+#rg-gallery:not([data-rg-init="1"]) .rg-loading{
+  display:block !important;
+}
+
+/* видео */
+.rg-video{
+  width:100%;
+  height:100%;
+  display:block;
+  object-fit:contain;
+  background:transparent;
+}
+
+/* ✅ убираем любые webkit-контролы (iOS/Safari) */
+.rg-video::-webkit-media-controls,
+.rg-video::-webkit-media-controls-panel,
+.rg-video::-webkit-media-controls-play-button,
+.rg-video::-webkit-media-controls-start-playback-button,
+.rg-video::-webkit-media-controls-timeline,
+.rg-video::-webkit-media-controls-current-time-display,
+.rg-video::-webkit-media-controls-time-remaining-display,
+.rg-video::-webkit-media-controls-volume-slider,
+.rg-video::-webkit-media-controls-mute-button,
+.rg-video::-webkit-media-controls-fullscreen-button{
+  display:none !important;
+  -webkit-appearance:none !important;
+}
+.rg-video{ pointer-events:none; }   /* ✅ нельзя тапнуть и поставить паузу */
 
 /* подсказка для звука */
 .rg-soundHint{
@@ -189,6 +227,8 @@
   cursor:pointer;
   user-select:none;
   display:none;
+  z-index:1001;
+  pointer-events:auto; /* ✅ кнопка кликается, даже если видео не кликается */
 }
 #rg-gallery.rg-needsTap .rg-soundHint{ display:block; }
 </style>
@@ -243,7 +283,21 @@
     return el.type === "video" ? (el.poster || "") : (el.src || "");
   }
 
-  // ✅ (3) preload с приоритетом + (4) try/catch
+  /* ✅ preload быстрее: + прелоадим первые картинки через <link rel="preload"> */
+  try{
+    const head = document.head || document.getElementsByTagName("head")[0];
+    const first = [thumbSrc(elements[0]), thumbSrc(elements[1]), thumbSrc(elements[2])].filter(Boolean);
+    first.forEach((href, i)=>{
+      if(document.querySelector(`link[rel="preload"][as="image"][href="${href}"]`)) return;
+      const l = document.createElement("link");
+      l.rel = "preload";
+      l.as = "image";
+      l.href = href;
+      try{ l.fetchPriority = (i === 0 ? "high" : "low"); }catch(e){}
+      head.appendChild(l);
+    });
+  }catch(e){}
+
   function preloadImg(url, priority){
     if(!url) return Promise.resolve(false);
     if(imgCache.has(url)) return imgCache.get(url);
@@ -263,7 +317,6 @@
 
   function getIsWide(el){
     if(!el) return Promise.resolve(false);
-
     const key = el.type === "video" ? ("v:" + (el.src||"")) : ("i:" + (el.src||""));
     if(isWideCache.has(key)) return Promise.resolve(isWideCache.get(key));
 
@@ -312,7 +365,7 @@
     imgEl.classList.add("is-loading");
     imgEl.decoding = "async";
     imgEl.loading = "eager";
-    try{ imgEl.fetchPriority = "low"; }catch(e){}   // ✅ (4)
+    try{ imgEl.fetchPriority = "low"; }catch(e){}
 
     imgEl.onload = ()=>{ imgEl.classList.remove("is-loading"); setLoading(slot,false); };
     imgEl.onerror= ()=>{ imgEl.classList.remove("is-loading"); setLoading(slot,false); };
@@ -323,7 +376,7 @@
   function showCenter(el){
     stopActiveVideo();
 
-    // reset center, keep loader & hint
+    // reset center (оставляем только лоадер + hint)
     center.innerHTML = '<span class="rg-loading is-on" aria-hidden="true">loading...</span>';
     center.appendChild(soundHint);
 
@@ -331,24 +384,25 @@
       setLoading(center, true);
 
       const v = document.createElement("video");
-      v.className = "rg-main is-loading";
-      v.playsInline = true;
-      v.loop = true;
-      v.autoplay = true;
-      v.controls = false;
-      v.preload = "auto";
+      v.className = "rg-video rg-main is-loading";
       v.src = el.src;
       if(el.poster) v.poster = el.poster;
 
+      v.autoplay = true;
+      v.loop = true;
+      v.playsInline = true;
+      v.preload = "auto";
+
+      v.controls = false;
       v.setAttribute("playsinline", "");
       v.setAttribute("webkit-playsinline", "");
       v.setAttribute("controlslist","nodownload noplaybackrate noremoteplayback");
       v.setAttribute("disablepictureinpicture","");
+      v.setAttribute("disableRemotePlayback","");
 
       center.appendChild(v);
       activeVideo = v;
 
-      // ✅ (6) когда появился кадр/пошло воспроизведение — снимаем loading
       const ready = ()=>{
         v.classList.remove("is-loading");
         setLoading(center, false);
@@ -358,7 +412,7 @@
       v.addEventListener("canplay",  ready, {once:true});
       v.onerror = ()=>{ ready(); };
 
-      // ✅ autoplay СО ЗВУКОМ не убираю: сначала пробуем muted=false
+      // autoplay со звуком (пробуем), если нельзя — показываем tap
       const tryPlay = async ()=>{
         try{
           v.muted = false;
@@ -396,7 +450,7 @@
     img.className = "rg-main is-loading";
     img.decoding = "async";
     img.loading = "eager";
-    try{ img.fetchPriority = "high"; }catch(e){}     // ✅ (4)
+    try{ img.fetchPriority = "high"; }catch(e){}
 
     img.onload = ()=>{ img.classList.remove("is-loading"); setLoading(center,false); };
     img.onerror= ()=>{ img.classList.remove("is-loading"); setLoading(center,false); };
@@ -420,20 +474,19 @@
     setLoading(right.parentElement, true);
     setLoading(center, true);
 
-    // ✅ (3) текущий high, соседи low (грузим только картинки/постеры)
+    // ✅ текущий high, соседи low (грузим превью/постеры)
     await Promise.all([
       preloadImg(thumbSrc(elements[i]),   "high"),
       preloadImg(thumbSrc(elements[prev]),"low"),
       preloadImg(thumbSrc(elements[next]),"low")
     ]);
-
     if(t !== token) return;
 
     setSide(left,  thumbSrc(elements[prev]));
     setSide(right, thumbSrc(elements[next]));
     showCenter(elements[i]);
 
-    // ✅ второе кольцо — в фоне
+    // второе кольцо — в фоне
     const prev2 = (prev - 1 + elements.length) % elements.length;
     const next2 = (next + 1) % elements.length;
     const bg = ()=>{
@@ -451,17 +504,7 @@
   prevBtn.addEventListener("click", ()=>show(index - 1));
   nextBtn.addEventListener("click", ()=>show(index + 1));
 
-  if(!window.__rgKeyHandler){
-    window.__rgKeyHandler = e=>{
-      const g = document.getElementById("rg-gallery");
-      if(!g || g.style.display === "none") return;
-      if(e.key === "ArrowRight") g.querySelector(".rg-next")?.click();
-      if(e.key === "ArrowLeft")  g.querySelector(".rg-prev")?.click();
-    };
-    document.addEventListener("keydown", window.__rgKeyHandler);
-  }
-
-  // ✅ (5) быстрый старт
+  // быстрый старт
   preloadImg(thumbSrc(elements[0]), "high");
   preloadImg(thumbSrc(elements[1]), "low");
   preloadImg(thumbSrc(elements[2]), "low");
