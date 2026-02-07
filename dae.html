@@ -21,7 +21,7 @@
   <button class="rg-btn rg-next" type="button" aria-label="Next">⟩</button>
 </div>
 
-<!-- прогрев соединений (это реально помогает) -->
+<!-- прогрев соединений -->
 <link rel="dns-prefetch" href="//raw.githubusercontent.com">
 <link rel="preconnect" href="https://raw.githubusercontent.com" crossorigin>
 
@@ -121,25 +121,38 @@
   font-size:13px;
   letter-spacing:.01em;
   line-height:16px;
-
-  color:#fff;
-  mix-blend-mode:difference;
-  opacity:.9;
-
   pointer-events:none;
   user-select:none;
   display:none;
+
+  /* базовый фолбэк, чтобы было видно всегда */
+  color:#111;
+  mix-blend-mode:normal;
+  opacity:.9;
 }
 .rg-loading.is-on{ display:block; }
 
-/* центр-лоадер всегда сверху всего внутри центра */
+/* центр-лоадер всегда сверху */
 .rg-centerLoading{ z-index:3; }
+
+/* PATCH: лоадер всегда поверх */
+#rg-gallery .rg-loading{ z-index:999; }
 
 .rg-side.is-loading,
 .rg-main.is-loading{ opacity:0; }
 
-/* PATCH: лоадер всегда поверх и видимый, даже если что-то перекрывает */
-#rg-gallery .rg-loading{ z-index:999; }
+/* ✅ если браузер поддерживает mix-blend-mode — возвращаем твой эффект */
+@supports (mix-blend-mode:difference){
+  .rg-loading{
+    color:#fff;
+    mix-blend-mode:difference;
+  }
+}
+
+/* ✅ пока JS не инициализировался — показываем лоадеры, чтобы не было белого экрана */
+#rg-gallery:not([data-rg-init="1"]) .rg-loading{
+  display:block !important;
+}
 </style>
 
 <script>
@@ -187,7 +200,6 @@
     const p = new Promise(resolve=>{
       const img = new Image();
       img.decoding = "async";
-      // fetchPriority работает не везде, но где работает — приятно ускоряет
       try { if(priority) img.fetchPriority = priority; } catch(e){}
       img.onload  = () => resolve(true);
       img.onerror = () => resolve(false);
@@ -217,7 +229,6 @@
     };
     imgEl.onerror = ()=>{
       imgEl.classList.remove("is-loading");
-      // если картинка не загрузилась — всё равно убираем лоадер, чтобы не висел вечно
       setLoading(slot,false);
     };
 
@@ -225,11 +236,9 @@
   }
 
   function showCenter(src){
-    // Глобальный лоадер центра: включаем ВСЕГДА, даже если центр пустой
     centerLoading.classList.add("is-on");
 
-    // удаляем прошлую картинку, но НЕ трогаем centerLoading
-    const old = center.querySelector("img.rg-main, video.rg-main");
+    const old = center.querySelector("img.rg-main");
     if(old) old.remove();
 
     const img = document.createElement("img");
@@ -244,7 +253,6 @@
     };
     img.onerror = ()=>{
       img.classList.remove("is-loading");
-      // если не загрузилось — оставляем текст? обычно лучше убрать, чтобы не “вечный лоадинг”
       centerLoading.classList.remove("is-on");
     };
 
@@ -262,10 +270,8 @@
     const prev = (i - 1 + elements.length) % elements.length;
     const next = (i + 1) % elements.length;
 
-    // моментально показываем лоадер (чтобы не было белого пустого экрана)
     centerLoading.classList.add("is-on");
 
-    // грузим текущую + соседние (с приоритетами)
     await Promise.all([
       preload(elements[i].src, "high"),
       preload(elements[prev].src, "low"),
@@ -278,7 +284,6 @@
     setSide(right, elements[next].src);
     showCenter(elements[i].src);
 
-    // второе кольцо — в фоне
     preload(elements[(prev - 1 + elements.length) % elements.length].src, "low");
     preload(elements[(next + 1) % elements.length].src, "low");
   }
@@ -286,121 +291,10 @@
   prevBtn.addEventListener("click", ()=>show(index - 1));
   nextBtn.addEventListener("click", ()=>show(index + 1));
 
-  if(!window.__rgKeyHandler){
-    window.__rgKeyHandler = e=>{
-      const g = document.getElementById("rg-gallery");
-      if(!g || g.style.display === "none") return;
-      if(e.key === "ArrowRight") g.querySelector(".rg-next")?.click();
-      if(e.key === "ArrowLeft")  g.querySelector(".rg-prev")?.click();
-    };
-    document.addEventListener("keydown", window.__rgKeyHandler);
-  }
-
-  // “быстрый старт”: прогреваем первые 2-3 сразу
   preload(elements[0]?.src, "high");
   preload(elements[1]?.src, "low");
   preload(elements[2]?.src, "low");
 
   show(0);
-})();
-</script>
-
-<script>
-/* PATCH: не меняя твой код — гарантируем loading на пустом экране + ускоряем старт preload-ами */
-(function(){
-  const gallery = document.getElementById("rg-gallery");
-  if(!gallery) return;
-
-  // 1) AUTO-PRELOAD: достаём ссылки на raw.githubusercontent.com из текста скриптов и прелоадим первые N
-  try{
-    const scripts = Array.from(document.scripts);
-    const all = [];
-    const re = /https:\/\/raw\.githubusercontent\.com\/[^\s"'()<>]+/g;
-
-    for(const s of scripts){
-      const txt = s.textContent || "";
-      let m;
-      while((m = re.exec(txt)) && all.length < 12){
-        const url = m[0];
-        if(!all.includes(url)) all.push(url);
-      }
-      if(all.length >= 12) break;
-    }
-
-    const head = document.head || document.getElementsByTagName("head")[0];
-    all.slice(0, 8).forEach((href, i)=>{
-      if(document.querySelector(`link[rel="preload"][href="${href}"]`)) return;
-      const link = document.createElement("link");
-      link.rel = "preload";
-      link.as  = "image";
-      link.href = href;
-      try { link.fetchPriority = (i < 2 ? "high" : "low"); } catch(e){}
-      head.appendChild(link);
-    });
-  }catch(e){}
-
-  // 2) LOADING ALWAYS: включаем/выключаем loading по факту наличия/загрузки медиа
-  function slotOf(node){
-    if(!node) return null;
-    return node.closest(".rg-centerSlot, .rg-sideSlot");
-  }
-  function setLoading(slot, on){
-    if(!slot) return;
-    const l = slot.querySelector(".rg-loading");
-    if(l) l.classList.toggle("is-on", !!on);
-  }
-  function isMediaLoading(media){
-    if(!media) return true;
-    if(media.classList && media.classList.contains("is-loading")) return true;
-    if(media.tagName === "IMG") return !(media.complete && media.naturalWidth > 0);
-    if(media.tagName === "VIDEO") return (media.readyState < 2);
-    return false;
-  }
-  function refreshSlot(slot){
-    if(!slot) return;
-    const media = slot.querySelector("img.rg-main, video.rg-main, img.rg-side, video.rg-side");
-    if(!media){ setLoading(slot, true); return; }
-    setLoading(slot, isMediaLoading(media));
-  }
-
-  // На старте: сразу принудительно включим лоадеры
-  gallery.querySelectorAll(".rg-centerSlot, .rg-sideSlot").forEach(refreshSlot);
-
-  // Слушаем load/error для картинок (в т.ч. динамически добавленных)
-  gallery.addEventListener("load", (e)=>{
-    const t = e.target;
-    if(!(t instanceof HTMLElement)) return;
-    if(t.tagName !== "IMG" && t.tagName !== "VIDEO") return;
-    refreshSlot(slotOf(t));
-  }, true);
-
-  gallery.addEventListener("error", (e)=>{
-    const t = e.target;
-    if(!(t instanceof HTMLElement)) return;
-    if(t.tagName !== "IMG" && t.tagName !== "VIDEO") return;
-    setLoading(slotOf(t), false);
-  }, true);
-
-  // Для видео
-  gallery.addEventListener("loadeddata", (e)=>{
-    const t = e.target;
-    if(!(t instanceof HTMLElement)) return;
-    if(t.tagName !== "VIDEO") return;
-    refreshSlot(slotOf(t));
-  }, true);
-
-  // MutationObserver: если твой код удалил/добавил картинку — обновим лоадер мгновенно
-  const mo = new MutationObserver((mutations)=>{
-    const touched = new Set();
-    for(const m of mutations){
-      const a = slotOf(m.target);
-      if(a) touched.add(a);
-      m.addedNodes && m.addedNodes.forEach(n=>{ const s=slotOf(n); if(s) touched.add(s); });
-      m.removedNodes && m.removedNodes.forEach(n=>{ const s=slotOf(n); if(s) touched.add(s); });
-    }
-    touched.forEach(refreshSlot);
-  });
-
-  mo.observe(gallery, {subtree:true, childList:true, attributes:true, attributeFilter:["class","src"]});
 })();
 </script>
