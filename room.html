@@ -20,6 +20,14 @@
   <button class="rg-btn rg-next" type="button" aria-label="Next">⟩</button>
 </div>
 
+<!-- ✅ (1) ПРОГРЕВ ДОМЕНОВ -->
+<link rel="dns-prefetch" href="//raw.githubusercontent.com">
+<link rel="preconnect" href="https://raw.githubusercontent.com" crossorigin>
+<link rel="dns-prefetch" href="//res.cloudinary.com">
+<link rel="preconnect" href="https://res.cloudinary.com" crossorigin>
+<link rel="dns-prefetch" href="//c.s-microsoft.com">
+<link rel="preconnect" href="https://c.s-microsoft.com" crossorigin>
+
 <style>
 @font-face{
   font-family:"SegoeUI";
@@ -115,6 +123,9 @@
 }
 .rg-loading.is-on{ display:block; }
 
+/* ✅ (2) PATCH: лоадер всегда поверх */
+#rg-gallery .rg-loading{ z-index:999; }
+
 .rg-side.is-loading,
 .rg-main.is-loading,
 .rg-video.is-loading{ opacity:0; }
@@ -126,7 +137,7 @@
   top:50%;
   transform:translate(-50%,-50%);
   display:none;
-  z-index:5;
+  z-index:1001; /* ✅ (2) выше лоадера */
   cursor:pointer;
   user-select:none;
   -webkit-tap-highlight-color:transparent;
@@ -214,12 +225,14 @@
     return item.type === "video" ? (item.poster || "") : (item.src || "");
   }
 
-  function preloadImg(src){
+  /* ✅ (3) preload с приоритетами + ✅ try/catch */
+  function preloadImg(src, priority){
     if(!src) return Promise.resolve(false);
     if(imgCache.has(src)) return imgCache.get(src);
     const p = new Promise(resolve=>{
       const img = new Image();
       img.decoding = "async";
+      try{ if(priority) img.fetchPriority = priority; }catch(e){}
       img.onload  = () => resolve(true);
       img.onerror = () => resolve(false);
       img.src = src;
@@ -247,7 +260,7 @@
     imgEl.classList.add("is-loading");
     imgEl.decoding = "async";
     imgEl.loading = "eager";
-    imgEl.fetchPriority = "low";
+    try{ imgEl.fetchPriority = "low"; }catch(e){}
 
     imgEl.onload = ()=>{ imgEl.classList.remove("is-loading"); setLoading(slot,false); };
     imgEl.onerror= ()=>{ imgEl.classList.remove("is-loading"); setLoading(slot,false); };
@@ -284,17 +297,19 @@
       center.appendChild(unmute);
       activeVideo = v;
 
+      /* ✅ (5) снимаем loading раньше: playing тоже */
       const hideLoader = ()=>{
         v.classList.remove("is-loading");
         setLoading(center,false);
       };
+      v.addEventListener("playing", hideLoader, {once:true});
       v.addEventListener("loadeddata", hideLoader, {once:true});
       v.addEventListener("canplay", hideLoader, {once:true});
       v.onerror = hideLoader;
 
       (async ()=>{
         try{
-          v.muted = false;
+          v.muted = false;   /* autoplay со звуком НЕ убираю */
           v.volume = 1;
           await v.play();
           unmute.classList.remove("is-on");
@@ -325,7 +340,7 @@
     img.className = "rg-main is-loading";
     img.decoding = "async";
     img.loading = "eager";
-    img.fetchPriority = "high";
+    try{ img.fetchPriority = "high"; }catch(e){}
 
     img.onload = ()=>{ img.classList.remove("is-loading"); setLoading(center,false); };
     img.onerror= ()=>{ img.classList.remove("is-loading"); setLoading(center,false); };
@@ -344,31 +359,45 @@
     const p = (i - 1 + elements.length) % elements.length;
     const n = (i + 1) % elements.length;
 
-    gallery.classList.toggle("rg-wideCenter", !!elements[i].wide);
+    const hideSides = !!elements[i].wide;
+    gallery.classList.toggle("rg-wideCenter", hideSides);
 
+    /* loading сразу: центр всегда, боковые только если они будут видны */
     setLoading(center, true);
-    setLoading(left.parentElement, true);
-    setLoading(right.parentElement, true);
+    if(!hideSides){
+      setLoading(left.parentElement, true);
+      setLoading(right.parentElement, true);
+    }else{
+      setLoading(left.parentElement, false);
+      setLoading(right.parentElement, false);
+      left.classList.remove("is-loading");
+      right.classList.remove("is-loading");
+    }
 
-    await Promise.all([
-      preloadImg(thumbSrc(elements[i])),
-      preloadImg(thumbSrc(elements[p])),
-      preloadImg(thumbSrc(elements[n]))
-    ]);
+    /* ✅ (3) приоритеты: текущий high, соседи low, но только если боковые видны */
+    const tasks = [preloadImg(thumbSrc(elements[i]), "high")];
+    if(!hideSides){
+      tasks.push(
+        preloadImg(thumbSrc(elements[p]), "low"),
+        preloadImg(thumbSrc(elements[n]), "low")
+      );
+    }
+    await Promise.all(tasks);
     if(t !== token) return;
 
-    if(!elements[i].wide){
+    if(!hideSides){
       setSide(left,  elements[p]);
       setSide(right, elements[n]);
     }
 
     showCenter(elements[i]);
 
+    /* фон: второе кольцо */
     const bg = ()=>{
       const p2 = (p - 1 + elements.length) % elements.length;
       const n2 = (n + 1) % elements.length;
-      preloadImg(thumbSrc(elements[p2]));
-      preloadImg(thumbSrc(elements[n2]));
+      preloadImg(thumbSrc(elements[p2]), "low");
+      preloadImg(thumbSrc(elements[n2]), "low");
     };
     if("requestIdleCallback" in window) requestIdleCallback(bg, {timeout:600});
     else setTimeout(bg, 0);
@@ -377,7 +406,11 @@
   prevBtn.onclick = ()=>show(index - 1);
   nextBtn.onclick = ()=>show(index + 1);
 
+  /* ✅ (6) быстрый старт */
+  preloadImg(thumbSrc(elements[0]), "high");
+  preloadImg(thumbSrc(elements[1]), "low");
+  preloadImg(thumbSrc(elements[2]), "low");
+
   show(0);
 })();
 </script>
-
