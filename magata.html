@@ -20,6 +20,14 @@
   <button class="rg-btn rg-next" type="button" aria-label="Next">⟩</button>
 </div>
 
+<!-- ✅ (1) ПРОГРЕВ ДОМЕНОВ -->
+<link rel="dns-prefetch" href="//raw.githubusercontent.com">
+<link rel="preconnect" href="https://raw.githubusercontent.com" crossorigin>
+<link rel="dns-prefetch" href="//res.cloudinary.com">
+<link rel="preconnect" href="https://res.cloudinary.com" crossorigin>
+<link rel="dns-prefetch" href="//c.s-microsoft.com">
+<link rel="preconnect" href="https://c.s-microsoft.com" crossorigin>
+
 <style>
 @font-face{
   font-family:"SegoeUI";
@@ -60,7 +68,7 @@
   align-items:center;
   justify-content:center;
   overflow:hidden;
-  margin:0 -290px;   /* сближаем боковые к центру */
+  margin:0 -290px;
 }
 
 .rg-centerSlot{
@@ -116,7 +124,6 @@
   outline:2px solid rgba(0,0,0,.25);
   outline-offset:3px;
 }
-
 .rg-btn:active{ transform:translateY(-50%); }
 
 .rg-prev{ left:80px; }
@@ -141,7 +148,7 @@
   top:50%;
   transform:translate(-50%,-50%);
   font-family:"SegoeUI","Segoe UI",-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif;
-  font-weight:300;       /* кстати у тебя тут 600 — если надо light, ставь 300 */
+  font-weight:300;
   font-size:13px;
   letter-spacing:.01em;
   line-height:16px;
@@ -156,7 +163,10 @@
 }
 .rg-loading.is-on{ display:block; }
 
-/* пока грузится — прячем контент, чтобы не мелькала старая картинка */
+/* ✅ (2) PATCH: лоадер поверх всего */
+#rg-gallery .rg-loading{ z-index:999; }
+
+/* пока грузится — прячем контент */
 .rg-side.is-loading,
 .rg-main.is-loading{ opacity:0; }
 
@@ -168,7 +178,7 @@
   transform:translateX(-50%);
   padding:10px 14px;
   font-family:"SegoeUI","Segoe UI",-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif;
-  font-weight:300;            /* ✅ 300 */
+  font-weight:300;
   font-size:13px;
   letter-spacing:.01em;
   line-height:16px;
@@ -233,13 +243,15 @@
     return el.type === "video" ? (el.poster || "") : (el.src || "");
   }
 
-  function preloadImg(url){
+  // ✅ (3) preload с приоритетом + (4) try/catch
+  function preloadImg(url, priority){
     if(!url) return Promise.resolve(false);
     if(imgCache.has(url)) return imgCache.get(url);
 
     const p = new Promise(resolve=>{
       const img = new Image();
       img.decoding = "async";
+      try{ if(priority) img.fetchPriority = priority; }catch(e){}
       img.onload  = () => resolve(true);
       img.onerror = () => resolve(false);
       img.src = url;
@@ -255,30 +267,15 @@
     const key = el.type === "video" ? ("v:" + (el.src||"")) : ("i:" + (el.src||""));
     if(isWideCache.has(key)) return Promise.resolve(isWideCache.get(key));
 
-    // video: по постеру быстрее
-    if(el.type === "video"){
-      if(el.poster){
-        return new Promise(resolve=>{
-          const img = new Image();
-          img.onload = () => {
-            const wide = img.naturalWidth > img.naturalHeight;
-            isWideCache.set(key, wide);
-            resolve(wide);
-          };
-          img.onerror = () => {
-            isWideCache.set(key, false);
-            resolve(false);
-          };
-          img.src = el.poster;
-        });
-      }
+    const imgSrc = (el.type === "video") ? (el.poster || "") : (el.src || "");
+    if(!imgSrc){
       isWideCache.set(key, false);
       return Promise.resolve(false);
     }
 
-    // img
     return new Promise(resolve=>{
       const img = new Image();
+      img.decoding = "async";
       img.onload = () => {
         const wide = img.naturalWidth > img.naturalHeight;
         isWideCache.set(key, wide);
@@ -288,7 +285,7 @@
         isWideCache.set(key, false);
         resolve(false);
       };
-      img.src = el.src;
+      img.src = imgSrc;
     });
   }
 
@@ -315,7 +312,7 @@
     imgEl.classList.add("is-loading");
     imgEl.decoding = "async";
     imgEl.loading = "eager";
-    imgEl.fetchPriority = "low";
+    try{ imgEl.fetchPriority = "low"; }catch(e){}   // ✅ (4)
 
     imgEl.onload = ()=>{ imgEl.classList.remove("is-loading"); setLoading(slot,false); };
     imgEl.onerror= ()=>{ imgEl.classList.remove("is-loading"); setLoading(slot,false); };
@@ -331,7 +328,6 @@
     center.appendChild(soundHint);
 
     if(el.type === "video"){
-      // для видео: считаем "загружено", когда загрузился постер/первый кадр
       setLoading(center, true);
 
       const v = document.createElement("video");
@@ -339,30 +335,30 @@
       v.playsInline = true;
       v.loop = true;
       v.autoplay = true;
-      v.controls = false;          /* ✅ без панели */
+      v.controls = false;
       v.preload = "auto";
       v.src = el.src;
       if(el.poster) v.poster = el.poster;
 
-      // максимально "без UI"
+      v.setAttribute("playsinline", "");
+      v.setAttribute("webkit-playsinline", "");
       v.setAttribute("controlslist","nodownload noplaybackrate noremoteplayback");
       v.setAttribute("disablepictureinpicture","");
-      v.setAttribute("webkit-playsinline","");
 
       center.appendChild(v);
       activeVideo = v;
 
-      // когда появился кадр — снимаем loading
+      // ✅ (6) когда появился кадр/пошло воспроизведение — снимаем loading
       const ready = ()=>{
         v.classList.remove("is-loading");
         setLoading(center, false);
-        v.removeEventListener("loadeddata", ready);
-        v.removeEventListener("canplay", ready);
       };
-      v.addEventListener("loadeddata", ready, {once:true});
-      v.addEventListener("canplay", ready, {once:true});
+      v.addEventListener("playing",  ready, {once:true});
+      v.addEventListener("loadeddata",ready, {once:true});
+      v.addEventListener("canplay",  ready, {once:true});
+      v.onerror = ()=>{ ready(); };
 
-      // autoplay со звуком почти всегда блокируется — поэтому делаем best-effort:
+      // ✅ autoplay СО ЗВУКОМ не убираю: сначала пробуем muted=false
       const tryPlay = async ()=>{
         try{
           v.muted = false;
@@ -400,7 +396,7 @@
     img.className = "rg-main is-loading";
     img.decoding = "async";
     img.loading = "eager";
-    img.fetchPriority = "high";
+    try{ img.fetchPriority = "high"; }catch(e){}     // ✅ (4)
 
     img.onload = ()=>{ img.classList.remove("is-loading"); setLoading(center,false); };
     img.onerror= ()=>{ img.classList.remove("is-loading"); setLoading(center,false); };
@@ -419,36 +415,34 @@
     const prev = (i - 1 + elements.length) % elements.length;
     const next = (i + 1) % elements.length;
 
-    // включаем лоадеры мгновенно
+    // ✅ лоадеры мгновенно (чтобы не было “белый фон + стрелки”)
     setLoading(left.parentElement, true);
     setLoading(right.parentElement, true);
     setLoading(center, true);
 
-    // прелоад: текущий/соседние (только картинки или постеры)
+    // ✅ (3) текущий high, соседи low (грузим только картинки/постеры)
     await Promise.all([
-      preloadImg(thumbSrc(elements[i])),
-      preloadImg(thumbSrc(elements[prev])),
-      preloadImg(thumbSrc(elements[next]))
+      preloadImg(thumbSrc(elements[i]),   "high"),
+      preloadImg(thumbSrc(elements[prev]),"low"),
+      preloadImg(thumbSrc(elements[next]),"low")
     ]);
 
     if(t !== token) return;
 
-    // боковые показывают превью: картинки или постер видео
     setSide(left,  thumbSrc(elements[prev]));
     setSide(right, thumbSrc(elements[next]));
     showCenter(elements[i]);
 
-    // второе кольцо — в фоне (idle)
+    // ✅ второе кольцо — в фоне
     const prev2 = (prev - 1 + elements.length) % elements.length;
     const next2 = (next + 1) % elements.length;
     const bg = ()=>{
-      preloadImg(thumbSrc(elements[prev2]));
-      preloadImg(thumbSrc(elements[next2]));
+      preloadImg(thumbSrc(elements[prev2]), "low");
+      preloadImg(thumbSrc(elements[next2]), "low");
     };
     if("requestIdleCallback" in window) requestIdleCallback(bg, {timeout:600});
     else setTimeout(bg, 0);
 
-    // горизонтальный текущий — убираем боковые
     const wide = await getIsWide(elements[i]);
     if(t !== token) return;
     gallery.classList.toggle("rg-wide", wide);
@@ -467,7 +461,11 @@
     document.addEventListener("keydown", window.__rgKeyHandler);
   }
 
+  // ✅ (5) быстрый старт
+  preloadImg(thumbSrc(elements[0]), "high");
+  preloadImg(thumbSrc(elements[1]), "low");
+  preloadImg(thumbSrc(elements[2]), "low");
+
   show(0);
 })();
 </script>
-
