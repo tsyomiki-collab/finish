@@ -20,6 +20,12 @@
   <button class="rg-btn rg-next" type="button" aria-label="Next">⟩</button>
 </div>
 
+<!-- ✅ (1) ПРОГРЕВ ДОМЕНОВ: быстрее старт -->
+<link rel="dns-prefetch" href="//raw.githubusercontent.com">
+<link rel="preconnect" href="https://raw.githubusercontent.com" crossorigin>
+<link rel="dns-prefetch" href="//res.cloudinary.com">
+<link rel="preconnect" href="https://res.cloudinary.com" crossorigin>
+
 <style>
 @font-face{
   font-family:"SegoeUI";
@@ -122,6 +128,9 @@
   display:none;
 }
 .rg-loading.is-on{ display:block; }
+
+/* ✅ (2) PATCH: лоадер всегда поверх */
+#rg-gallery .rg-loading{ z-index:999; }
 
 /* пока грузится — прячем контент */
 .rg-side.is-loading,
@@ -228,13 +237,15 @@
     return item.type === "video" ? (item.poster || "") : (item.src || "");
   }
 
-  function preloadImg(src){
+  /* ✅ (3) preload с приоритетом */
+  function preloadImg(src, priority){
     if(!src) return Promise.resolve(false);
     if(cache.has(src)) return cache.get(src);
 
     const p = new Promise(resolve=>{
       const img = new Image();
       img.decoding = "async";
+      try{ if(priority) img.fetchPriority = priority; }catch(e){}
       img.onload  = () => resolve(true);
       img.onerror = () => resolve(false);
       img.src = src;
@@ -272,7 +283,7 @@
     imgEl.classList.add("is-loading");
     imgEl.decoding = "async";
     imgEl.loading = "eager";
-    imgEl.fetchPriority = "low";
+    try{ imgEl.fetchPriority = "low"; }catch(e){}  /* ✅ (4) */
 
     imgEl.onload = ()=>{ imgEl.classList.remove("is-loading"); setLoading(slot,false); };
     imgEl.onerror= ()=>{ imgEl.classList.remove("is-loading"); setLoading(slot,false); };
@@ -284,7 +295,7 @@
   function showCenter(item){
     stopVideo();
 
-    // loader ON
+    // ✅ loader ON сразу (чтобы не было белого фона)
     center.innerHTML = '<span class="rg-loading is-on" aria-hidden="true">loading...</span>';
 
     if(item.type === "video"){
@@ -312,16 +323,18 @@
       center.appendChild(unmute);
       activeVideo = v;
 
-      // когда есть кадр — снимаем loading
+      // ✅ (6) как только реально есть воспроизведение/кадр — убираем loading
       const hideLoader = ()=>{
         v.classList.remove("is-loading");
         setLoading(center, false);
       };
+      v.addEventListener("playing", hideLoader, {once:true});
       v.addEventListener("loadeddata", hideLoader, {once:true});
       v.addEventListener("canplay", hideLoader, {once:true});
       v.onerror = ()=>{ hideLoader(); };
 
-      // autoplay со звуком (best effort). если блок — играем muted и просим tap
+      // ✅ autoplay со звуком НЕ УБИРАЮ:
+      // сначала пробуем muted=false. если блок — play muted + показываем tap.
       const trySound = async ()=>{
         try{
           v.muted = false;
@@ -355,7 +368,7 @@
     img.className = "rg-main is-loading";
     img.decoding = "async";
     img.loading = "eager";
-    img.fetchPriority = "high";
+    try{ img.fetchPriority = "high"; }catch(e){}   /* ✅ (4) */
 
     img.onload = ()=>{ img.classList.remove("is-loading"); setLoading(center,false); };
     img.onerror= ()=>{ img.classList.remove("is-loading"); setLoading(center,false); };
@@ -374,16 +387,16 @@
     const p = (i - 1 + elements.length) % elements.length;
     const n = (i + 1) % elements.length;
 
-    // loading сразу
+    // ✅ loading сразу (на случай “белый фон + стрелки”)
     setLoading(left.parentElement, true);
     setLoading(right.parentElement, true);
     setLoading(center, true);
 
-    // прелоадим текущий и соседей (только картинки/постер)
+    // ✅ (3) текущий high, соседи low (грузим только постеры/картинки)
     await Promise.all([
-      preloadImg(thumbSrc(elements[i])),
-      preloadImg(thumbSrc(elements[p])),
-      preloadImg(thumbSrc(elements[n]))
+      preloadImg(thumbSrc(elements[i]), "high"),
+      preloadImg(thumbSrc(elements[p]), "low"),
+      preloadImg(thumbSrc(elements[n]), "low")
     ]);
     if(t !== token) return;
 
@@ -391,15 +404,15 @@
     setSide(right, elements[n]);
     showCenter(elements[i]);
 
-    // если текущий wide:true — скрываем боковые (у тебя так было)
+    // wide:true — скрываем боковые
     setSidesHidden(!!elements[i].wide);
 
-    // второе кольцо — в фоне
+    // ✅ (6) второе кольцо — в фоне
     const p2 = (p - 1 + elements.length) % elements.length;
     const n2 = (n + 1) % elements.length;
     const bg = ()=>{
-      preloadImg(thumbSrc(elements[p2]));
-      preloadImg(thumbSrc(elements[n2]));
+      preloadImg(thumbSrc(elements[p2]), "low");
+      preloadImg(thumbSrc(elements[n2]), "low");
     };
     if("requestIdleCallback" in window) requestIdleCallback(bg, {timeout:600});
     else setTimeout(bg, 0);
@@ -408,7 +421,11 @@
   prevBtn.onclick = ()=>show(index - 1);
   nextBtn.onclick = ()=>show(index + 1);
 
+  /* ✅ (5) быстрый старт */
+  preloadImg(thumbSrc(elements[0]), "high");
+  preloadImg(thumbSrc(elements[1]), "low");
+  preloadImg(thumbSrc(elements[2]), "low");
+
   show(0);
 })();
 </script>
-
