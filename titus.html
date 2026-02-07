@@ -59,7 +59,7 @@
 
 /* боковые слоты */
 .rg-sideSlot{
-  position:relative; /* ✅ чтобы loader был “внутри” слота */
+  position:relative;
   width:360px;
   height:330px;
   display:flex;
@@ -71,7 +71,7 @@
 }
 
 .rg-centerSlot{
-  position:relative; /* ✅ для loader */
+  position:relative;
   width:min(1180px, 70vw);
   height:735px;
   display:flex;
@@ -111,8 +111,9 @@
   letter-spacing:.01em;
   line-height:16px;
 
-  color:#fff;
-  mix-blend-mode:difference;
+  /* ✅ фолбэк: чтобы loading не “пропадал” */
+  color:#111;
+  mix-blend-mode:normal;
   opacity:.9;
 
   pointer-events:none;
@@ -120,6 +121,19 @@
   display:none;
 }
 .rg-loading.is-on{ display:block; }
+
+/* ✅ если поддерживается — включаем твой эффект */
+@supports (mix-blend-mode:difference){
+  .rg-loading{
+    color:#fff;
+    mix-blend-mode:difference;
+  }
+}
+
+/* ✅ ДО старта JS: сразу показываем loading (убирает белый экран) */
+#rg-gallery:not([data-rg-init="1"]) .rg-loading{
+  display:block !important;
+}
 
 /* ✅ (2) лоадер всегда поверх */
 #rg-gallery .rg-loading{ z-index:999; }
@@ -166,7 +180,7 @@
 .rg-centerSlot, .rg-sideSlot { contain: layout paint size; }
 .rg-main { will-change: contents; }
 
-/* ✅ КЛЮЧ: когда центральное горизонтальное — скрываем СЛОТЫ целиком (и их loading тоже исчезает) */
+/* ✅ КЛЮЧ: wideCenter => скрываем sideSlot целиком */
 #rg-gallery.rg-wideCenter .rg-sideSlot{
   display:none !important;
 }
@@ -204,7 +218,7 @@
   const preloadCache = new Map();
   const isWideCache  = new Map();
 
-  /* ✅ (3) preload с приоритетом */
+  /* ✅ preload с приоритетом */
   function preload(src, priority){
     if(!src) return Promise.resolve(false);
     if(preloadCache.has(src)) return preloadCache.get(src);
@@ -246,6 +260,16 @@
     if(l) l.classList.toggle("is-on", !!on);
   }
 
+  function clearSidesHard(){
+    // ✅ чтобы не было “второго loading” при wideCenter:
+    setLoading(left.parentElement, false);
+    setLoading(right.parentElement, false);
+    left.classList.remove("is-loading");
+    right.classList.remove("is-loading");
+    left.removeAttribute("src");
+    right.removeAttribute("src");
+  }
+
   function setSide(imgEl, src){
     const slot = imgEl.parentElement;
     setLoading(slot, true);
@@ -266,7 +290,6 @@
   }
 
   function showCenter(el){
-    // ✅ центр всегда имеет только ОДИН loader
     setLoading(center, true);
     center.innerHTML = '<span class="rg-loading is-on" aria-hidden="true">loading...</span>';
 
@@ -293,26 +316,22 @@
     const p = (i - 1 + elements.length) % elements.length;
     const n = (i + 1) % elements.length;
 
-    /* ✅ (4) сначала решаем wideCenter, чтобы боковые не мигали лоадером */
+    // ✅ лоадер центра мгновенно — всегда
+    setLoading(center, true);
+
+    // ✅ сначала решаем wideCenter (до включения боковых лоадеров)
     const hideSlots = await getIsWide(elements[i].src);
     if(t !== token) return;
     gallery.classList.toggle("rg-wideCenter", hideSlots);
 
-    // лоадер центра всегда
-    setLoading(center, true);
-
-    // боковые лоадеры включаем только если они реально будут видны
-    if(!hideSlots){
+    if(hideSlots){
+      clearSidesHard();
+    }else{
       setLoading(left.parentElement, true);
       setLoading(right.parentElement, true);
-    }else{
-      setLoading(left.parentElement, false);
-      setLoading(right.parentElement, false);
-      left.classList.remove("is-loading");
-      right.classList.remove("is-loading");
     }
 
-    // ✅ (3) current high, neighbors low только если слоты видимы
+    // ✅ текущая high, соседи low (только если слоты видимы)
     const tasks = [preload(elements[i].src, "high")];
     if(!hideSlots){
       tasks.push(preload(elements[p].src, "low"), preload(elements[n].src, "low"));
@@ -344,17 +363,7 @@
   prevBtn.addEventListener("click", ()=>show(index - 1));
   nextBtn.addEventListener("click", ()=>show(index + 1));
 
-  if(!window.__rgKeyHandler){
-    window.__rgKeyHandler = e=>{
-      const g = document.getElementById("rg-gallery");
-      if(!g || g.style.display === "none") return;
-      if(e.key === "ArrowRight") g.querySelector(".rg-next")?.click();
-      if(e.key === "ArrowLeft")  g.querySelector(".rg-prev")?.click();
-    };
-    document.addEventListener("keydown", window.__rgKeyHandler);
-  }
-
-  /* ✅ (5) быстрый старт */
+  // ✅ быстрый старт
   preload(elements[0]?.src, "high");
   preload(elements[1]?.src, "low");
   preload(elements[2]?.src, "low");
