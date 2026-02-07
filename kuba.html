@@ -98,15 +98,19 @@
   transform-origin:center center;
 }
 
+/* видео */
 .rg-video{
   width:100%;
   height:100%;
   display:block;
   object-fit:contain;
   background:transparent;
+
+  /* ✅ чтобы нельзя было тапом ставить на паузу */
+  pointer-events:none;
 }
 
-/* loading... (mix blend) */
+/* loading... */
 .rg-loading{
   position:absolute;
   left:50%;
@@ -132,12 +136,22 @@
 /* ✅ (2) PATCH: лоадер всегда поверх */
 #rg-gallery .rg-loading{ z-index:999; }
 
+/* ✅ ВАЖНО: ДО старта JS показываем loading всегда (убирает белый экран со стрелками) */
+#rg-gallery:not([data-rg-init="1"]) .rg-loading{
+  display:block !important;
+}
+
+/* ✅ страховка: если difference вдруг “съелся” — текст всё равно виден */
+@supports not (mix-blend-mode:difference){
+  .rg-loading{ color:#111; }
+}
+
 /* пока грузится — прячем контент */
 .rg-side.is-loading,
 .rg-main.is-loading,
 .rg-video.is-loading{ opacity:0; }
 
-/* overlay клика для звука */
+/* tap for sound (пилюля) */
 .rg-unmute{
   position:absolute;
   inset:0;
@@ -148,6 +162,9 @@
   user-select:none;
   -webkit-tap-highlight-color:transparent;
   z-index:2;
+
+  /* ✅ кликаем по оверлею, не по видео */
+  pointer-events:auto;
 }
 .rg-unmute.is-on{ display:flex; }
 
@@ -161,7 +178,7 @@
 
   border:1px solid rgba(0,0,0,.12);
   background:rgba(255,255,255,.92);
-  border-radius:999px;
+  border-radius:999px;   /* ✅ пилюля */
   color:#111;
 }
 
@@ -237,7 +254,28 @@
     return item.type === "video" ? (item.poster || "") : (item.src || "");
   }
 
-  /* ✅ (3) preload с приоритетом */
+  /* ✅ ускоряем самый первый показ: preload линками (постер + первая картинка) */
+  (function addPreloadLinks(){
+    try{
+      const head = document.head || document.getElementsByTagName("head")[0];
+      const first = [
+        thumbSrc(elements[0]),
+        thumbSrc(elements[1]),
+        thumbSrc(elements[2])
+      ].filter(Boolean);
+
+      first.forEach((href, i)=>{
+        if(document.querySelector(`link[rel="preload"][as="image"][href="${href}"]`)) return;
+        const link = document.createElement("link");
+        link.rel = "preload";
+        link.as  = "image";
+        link.href = href;
+        try{ link.fetchPriority = (i === 0 ? "high" : "low"); }catch(e){}
+        head.appendChild(link);
+      });
+    }catch(e){}
+  })();
+
   function preloadImg(src, priority){
     if(!src) return Promise.resolve(false);
     if(cache.has(src)) return cache.get(src);
@@ -283,7 +321,7 @@
     imgEl.classList.add("is-loading");
     imgEl.decoding = "async";
     imgEl.loading = "eager";
-    try{ imgEl.fetchPriority = "low"; }catch(e){}  /* ✅ (4) */
+    try{ imgEl.fetchPriority = "low"; }catch(e){}
 
     imgEl.onload = ()=>{ imgEl.classList.remove("is-loading"); setLoading(slot,false); };
     imgEl.onerror= ()=>{ imgEl.classList.remove("is-loading"); setLoading(slot,false); };
@@ -295,7 +333,7 @@
   function showCenter(item){
     stopVideo();
 
-    // ✅ loader ON сразу (чтобы не было белого фона)
+    // ✅ loader ON сразу
     center.innerHTML = '<span class="rg-loading is-on" aria-hidden="true">loading...</span>';
 
     if(item.type === "video"){
@@ -317,13 +355,12 @@
 
       const unmute = document.createElement("div");
       unmute.className = "rg-unmute";
-      unmute.innerHTML = "<span>tap to sound</span>";
+      unmute.innerHTML = "<span>tap for sound</span>";
 
       center.appendChild(v);
       center.appendChild(unmute);
       activeVideo = v;
 
-      // ✅ (6) как только реально есть воспроизведение/кадр — убираем loading
       const hideLoader = ()=>{
         v.classList.remove("is-loading");
         setLoading(center, false);
@@ -333,11 +370,11 @@
       v.addEventListener("canplay", hideLoader, {once:true});
       v.onerror = ()=>{ hideLoader(); };
 
-      // ✅ autoplay со звуком НЕ УБИРАЮ:
-      // сначала пробуем muted=false. если блок — play muted + показываем tap.
+      // ✅ autoplay со звуком (best effort): сначала muted=false
       const trySound = async ()=>{
         try{
           v.muted = false;
+          v.volume = 1;
           await v.play();
           unmute.classList.remove("is-on");
         }catch(err){
@@ -353,6 +390,7 @@
         unmute.classList.remove("is-on");
         try{
           v.muted = false;
+          v.volume = 1;
           await v.play();
         }catch(e){
           unmute.classList.add("is-on");
@@ -363,12 +401,11 @@
       return;
     }
 
-    // image
     const img = document.createElement("img");
     img.className = "rg-main is-loading";
     img.decoding = "async";
     img.loading = "eager";
-    try{ img.fetchPriority = "high"; }catch(e){}   /* ✅ (4) */
+    try{ img.fetchPriority = "high"; }catch(e){}
 
     img.onload = ()=>{ img.classList.remove("is-loading"); setLoading(center,false); };
     img.onerror= ()=>{ img.classList.remove("is-loading"); setLoading(center,false); };
@@ -387,12 +424,11 @@
     const p = (i - 1 + elements.length) % elements.length;
     const n = (i + 1) % elements.length;
 
-    // ✅ loading сразу (на случай “белый фон + стрелки”)
+    // ✅ loading сразу
     setLoading(left.parentElement, true);
     setLoading(right.parentElement, true);
     setLoading(center, true);
 
-    // ✅ (3) текущий high, соседи low (грузим только постеры/картинки)
     await Promise.all([
       preloadImg(thumbSrc(elements[i]), "high"),
       preloadImg(thumbSrc(elements[p]), "low"),
@@ -407,7 +443,7 @@
     // wide:true — скрываем боковые
     setSidesHidden(!!elements[i].wide);
 
-    // ✅ (6) второе кольцо — в фоне
+    // фон
     const p2 = (p - 1 + elements.length) % elements.length;
     const n2 = (n + 1) % elements.length;
     const bg = ()=>{
@@ -421,7 +457,7 @@
   prevBtn.onclick = ()=>show(index - 1);
   nextBtn.onclick = ()=>show(index + 1);
 
-  /* ✅ (5) быстрый старт */
+  // быстрый старт
   preloadImg(thumbSrc(elements[0]), "high");
   preloadImg(thumbSrc(elements[1]), "low");
   preloadImg(thumbSrc(elements[2]), "low");
