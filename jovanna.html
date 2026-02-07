@@ -4,11 +4,16 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 
-<!-- ✅ (1) ПРОГРЕВ: быстрее старт, меньше “белого экрана” -->
+<!-- ✅ прогрев -->
 <link rel="dns-prefetch" href="//raw.githubusercontent.com">
 <link rel="preconnect" href="https://raw.githubusercontent.com" crossorigin>
 <link rel="dns-prefetch" href="//c.s-microsoft.com">
 <link rel="preconnect" href="https://c.s-microsoft.com" crossorigin>
+
+<!-- ✅ (A) preload первых картинок: ускоряет самый первый экран -->
+<link rel="preload" as="image" href="https://raw.githubusercontent.com/tsyomiki-collab/jovan-s/main/1.png">
+<link rel="preload" as="image" href="https://raw.githubusercontent.com/tsyomiki-collab/jovan-s/main/2.png">
+<link rel="preload" as="image" href="https://raw.githubusercontent.com/tsyomiki-collab/jovan-s/main/3.png">
 
 <style>
 @font-face {
@@ -116,7 +121,7 @@
 
 .rg-centerSlot, .rg-sideSlot { contain: layout paint size; }
 
-/* loader (✅ с mix-blend-mode) */
+/* loader */
 .rg-loading{
   position:absolute;
   left:50%;
@@ -128,23 +133,38 @@
   letter-spacing:.01em;
   line-height:16px;
 
-  color:#fff;
-  mix-blend-mode:difference;
-  opacity:.9;
-
   pointer-events:none;
   user-select:none;
   display:none;
+
+  /* ✅ (B) фолбэк: чтобы loading не пропадал (особенно на iOS) */
+  color:#111;
+  mix-blend-mode:normal;
+  opacity:.9;
 }
 .rg-loading.is-on{ display:block; }
 
+/* ✅ если поддерживается — включаем твой difference */
+@supports (mix-blend-mode:difference){
+  .rg-loading{
+    color:#fff;
+    mix-blend-mode:difference;
+  }
+}
+
+/* ✅ (C) до старта JS: показываем loading сразу (убираем белый экран) */
+#rg-gallery:not([data-rg-init="1"]) .rg-loading{
+  display:block !important;
+}
+
+/* пока грузится */
 .rg-side.is-loading,
 .rg-main.is-loading{ opacity:0; }
 
 /* если горизонтальная — скрываем боковые */
 #rg-gallery.rg-wide .rg-sideSlot{ display:none; }
 
-/* ✅ (2) PATCH: лоадер всегда поверх всего */
+/* лоадер всегда поверх */
 #rg-gallery .rg-loading{ z-index:999; }
 </style>
 </head>
@@ -207,7 +227,6 @@
 
   const cache = new Map();
 
-  /* ✅ (3) preload с приоритетом (где поддерживается) */
   function preload(url, priority){
     if(!url) return Promise.resolve(false);
     if(cache.has(url)) return cache.get(url);
@@ -249,12 +268,9 @@
 
   function setSide(imgEl, src){
     const slot = imgEl.parentElement;
-
-    // ✅ мгновенно показываем loading, скрываем картинку
     setLoading(slot, true);
     imgEl.classList.add("is-loading");
 
-    // ✅ (4) ускоряем decode/загрузку
     imgEl.decoding = "async";
     imgEl.loading = "eager";
     try{ imgEl.fetchPriority = "low"; }catch(e){}
@@ -266,14 +282,13 @@
   }
 
   function showCenter(el){
-    // ✅ всегда включаем лоадер центра до подстановки картинки
     setLoading(center,true);
     center.innerHTML = '<span class="rg-loading is-on">loading...</span>';
 
     const img=document.createElement("img");
     img.className="rg-main is-loading";
     img.decoding="async";
-    img.loading="eager";                 /* ✅ (5) */
+    img.loading="eager";
     try{ img.fetchPriority="high"; }catch(e){}
 
     img.onload=()=>{ img.classList.remove("is-loading"); setLoading(center,false); };
@@ -292,27 +307,28 @@
     const prev=(i-1+elements.length)%elements.length;
     const next=(i+1)%elements.length;
 
-    // ✅ wide вычисляем сначала (как у тебя) — чтобы не мигали боковые
+    // ✅ мгновенно включаем лоадеры
+    setLoading(center, true);
+    setLoading(left.parentElement, true);
+    setLoading(right.parentElement, true);
+
+    // ✅ wide сначала (чтобы не мигали боковые)
     const hideSides = await getIsWide(elements[i].src);
     if(t!==token) return;
     gallery.classList.toggle("rg-wide", hideSides);
 
-    // ✅ лоадер всегда моментально, чтобы не было “белый фон + стрелки”
-    setLoading(center, true);
-    if(!hideSides){
-      setLoading(left.parentElement, true);
-      setLoading(right.parentElement, true);
-    }else{
+    if(hideSides){
       setLoading(left.parentElement, false);
       setLoading(right.parentElement, false);
+      left.classList.remove("is-loading");
+      right.classList.remove("is-loading");
     }
 
-    // ✅ (6) текущая — high, боковые — low (и только если видны)
+    // ✅ текущая — high, соседи — low (только если боковые видны)
     const tasks = [preload(elements[i].src, "high")];
     if(!hideSides){
       tasks.push(preload(elements[prev].src, "low"), preload(elements[next].src, "low"));
     }
-
     await Promise.all(tasks);
     if(t!==token) return;
 
@@ -322,7 +338,7 @@
     }
     showCenter(elements[i]);
 
-    // ✅ фон: второе кольцо (в idle, чтобы не мешать UI)
+    // ✅ второе кольцо — в фоне
     const bg = ()=>{
       preload(elements[(prev-1+elements.length)%elements.length].src, "low");
       preload(elements[(next+1)%elements.length].src, "low");
@@ -334,7 +350,7 @@
   prevBtn.onclick=()=>show(index-1);
   nextBtn.onclick=()=>show(index+1);
 
-  /* ✅ (3/6) быстрый старт: прогреваем первые 3 */
+  // ✅ быстрый старт (прогрев ещё до show(0))
   preload(elements[0]?.src, "high");
   preload(elements[1]?.src, "low");
   preload(elements[2]?.src, "low");
