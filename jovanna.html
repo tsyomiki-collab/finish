@@ -4,6 +4,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 
+<!-- ✅ (1) ПРОГРЕВ: быстрее старт, меньше “белого экрана” -->
+<link rel="dns-prefetch" href="//raw.githubusercontent.com">
+<link rel="preconnect" href="https://raw.githubusercontent.com" crossorigin>
+<link rel="dns-prefetch" href="//c.s-microsoft.com">
+<link rel="preconnect" href="https://c.s-microsoft.com" crossorigin>
+
 <style>
 @font-face {
   font-family: "SegoeUI";
@@ -117,7 +123,7 @@
   top:50%;
   transform:translate(-50%,-50%);
   font-family:"SegoeUI","Segoe UI",-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif;
-  font-weight:300;       /* кстати у тебя тут 600 — если надо light, ставь 300 */
+  font-weight:300;
   font-size:13px;
   letter-spacing:.01em;
   line-height:16px;
@@ -137,6 +143,9 @@
 
 /* если горизонтальная — скрываем боковые */
 #rg-gallery.rg-wide .rg-sideSlot{ display:none; }
+
+/* ✅ (2) PATCH: лоадер всегда поверх всего */
+#rg-gallery .rg-loading{ z-index:999; }
 </style>
 </head>
 <body>
@@ -197,24 +206,32 @@
   const nextBtn = document.querySelector(".rg-next");
 
   const cache = new Map();
-  function preload(url){
+
+  /* ✅ (3) preload с приоритетом (где поддерживается) */
+  function preload(url, priority){
+    if(!url) return Promise.resolve(false);
     if(cache.has(url)) return cache.get(url);
+
     const p = new Promise(res=>{
       const img = new Image();
       img.decoding="async";
+      try{ if(priority) img.fetchPriority = priority; }catch(e){}
       img.onload=()=>res(true);
       img.onerror=()=>res(false);
       img.src=url;
     });
+
     cache.set(url,p);
     return p;
   }
 
   const isWideCache = new Map();
   function getIsWide(src){
+    if(!src) return Promise.resolve(false);
     if(isWideCache.has(src)) return Promise.resolve(isWideCache.get(src));
     return new Promise(res=>{
       const img=new Image();
+      img.decoding="async";
       img.onload=()=>{
         const wide = img.naturalWidth > img.naturalHeight;
         isWideCache.set(src,wide);
@@ -227,27 +244,41 @@
 
   function setLoading(slot, on){
     const l = slot.querySelector(".rg-loading");
-    if(l) l.classList.toggle("is-on", on);
+    if(l) l.classList.toggle("is-on", !!on);
   }
 
   function setSide(imgEl, src){
     const slot = imgEl.parentElement;
+
+    // ✅ мгновенно показываем loading, скрываем картинку
     setLoading(slot, true);
     imgEl.classList.add("is-loading");
+
+    // ✅ (4) ускоряем decode/загрузку
+    imgEl.decoding = "async";
+    imgEl.loading = "eager";
+    try{ imgEl.fetchPriority = "low"; }catch(e){}
+
     imgEl.onload = ()=>{ imgEl.classList.remove("is-loading"); setLoading(slot,false); };
     imgEl.onerror= ()=>{ imgEl.classList.remove("is-loading"); setLoading(slot,false); };
+
     imgEl.src = src;
   }
 
   function showCenter(el){
+    // ✅ всегда включаем лоадер центра до подстановки картинки
     setLoading(center,true);
     center.innerHTML = '<span class="rg-loading is-on">loading...</span>';
+
     const img=document.createElement("img");
     img.className="rg-main is-loading";
     img.decoding="async";
-    img.fetchPriority="high";
+    img.loading="eager";                 /* ✅ (5) */
+    try{ img.fetchPriority="high"; }catch(e){}
+
     img.onload=()=>{ img.classList.remove("is-loading"); setLoading(center,false); };
     img.onerror=()=>{ img.classList.remove("is-loading"); setLoading(center,false); };
+
     img.src=el.src;
     center.appendChild(img);
   }
@@ -261,12 +292,12 @@
     const prev=(i-1+elements.length)%elements.length;
     const next=(i+1)%elements.length;
 
-    // ✅ сначала вычисляем wide и прячем боковые ДО того, как включатся их лоадеры
+    // ✅ wide вычисляем сначала (как у тебя) — чтобы не мигали боковые
     const hideSides = await getIsWide(elements[i].src);
     if(t!==token) return;
     gallery.classList.toggle("rg-wide", hideSides);
 
-    // если боковые скрыты — не включаем им loading вообще
+    // ✅ лоадер всегда моментально, чтобы не было “белый фон + стрелки”
     setLoading(center, true);
     if(!hideSides){
       setLoading(left.parentElement, true);
@@ -276,10 +307,10 @@
       setLoading(right.parentElement, false);
     }
 
-    // ✅ прелоадим текущую; боковые — только если они реально будут видны
-    const tasks = [preload(elements[i].src)];
+    // ✅ (6) текущая — high, боковые — low (и только если видны)
+    const tasks = [preload(elements[i].src, "high")];
     if(!hideSides){
-      tasks.push(preload(elements[prev].src), preload(elements[next].src));
+      tasks.push(preload(elements[prev].src, "low"), preload(elements[next].src, "low"));
     }
 
     await Promise.all(tasks);
@@ -291,13 +322,22 @@
     }
     showCenter(elements[i]);
 
-    // фон: второе кольцо
-    preload(elements[(prev-1+elements.length)%elements.length].src);
-    preload(elements[(next+1)%elements.length].src);
+    // ✅ фон: второе кольцо (в idle, чтобы не мешать UI)
+    const bg = ()=>{
+      preload(elements[(prev-1+elements.length)%elements.length].src, "low");
+      preload(elements[(next+1)%elements.length].src, "low");
+    };
+    if("requestIdleCallback" in window) requestIdleCallback(bg, {timeout:600});
+    else setTimeout(bg, 0);
   }
 
   prevBtn.onclick=()=>show(index-1);
   nextBtn.onclick=()=>show(index+1);
+
+  /* ✅ (3/6) быстрый старт: прогреваем первые 3 */
+  preload(elements[0]?.src, "high");
+  preload(elements[1]?.src, "low");
+  preload(elements[2]?.src, "low");
 
   show(0);
 })();
