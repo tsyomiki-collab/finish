@@ -28,6 +28,11 @@
 <link rel="dns-prefetch" href="//c.s-microsoft.com">
 <link rel="preconnect" href="https://c.s-microsoft.com" crossorigin>
 
+<!-- ✅ PRELOAD: ускоряет первый экран (постер видео + первые картинки) -->
+<link rel="preload" as="image" href="https://raw.githubusercontent.com/tsyomiki-collab/in-my-room-2/main/1.jpg">
+<link rel="preload" as="image" href="https://raw.githubusercontent.com/tsyomiki-collab/in-my-room-2/main/2.jpg">
+<link rel="preload" as="image" href="https://raw.githubusercontent.com/tsyomiki-collab/in-my-room-2/main/3.jpg">
+
 <style>
 @font-face{
   font-family:"SegoeUI";
@@ -103,6 +108,24 @@
   object-fit:contain;
 }
 
+/* ✅ видео нельзя тапнуть => нельзя поставить паузу */
+.rg-video{ pointer-events:none; }
+
+/* ✅ убираем любые webkit-контролы (iOS/Safari), даже если вдруг появляются */
+.rg-video::-webkit-media-controls,
+.rg-video::-webkit-media-controls-panel,
+.rg-video::-webkit-media-controls-play-button,
+.rg-video::-webkit-media-controls-start-playback-button,
+.rg-video::-webkit-media-controls-timeline,
+.rg-video::-webkit-media-controls-current-time-display,
+.rg-video::-webkit-media-controls-time-remaining-display,
+.rg-video::-webkit-media-controls-volume-slider,
+.rg-video::-webkit-media-controls-mute-button,
+.rg-video::-webkit-media-controls-fullscreen-button{
+  display:none !important;
+  -webkit-appearance:none !important;
+}
+
 /* loading */
 .rg-loading{
   position:absolute;
@@ -114,30 +137,46 @@
   font-size:14px;
   letter-spacing:.01em;
   line-height:16px;
-  color:#fff;
-  mix-blend-mode:difference;
-  opacity:.9;
+
   pointer-events:none;
   user-select:none;
   display:none;
+
+  /* ✅ фолбэк: чтобы loading не пропадал */
+  color:#111;
+  mix-blend-mode:normal;
+  opacity:.9;
 }
 .rg-loading.is-on{ display:block; }
 
-/* ✅ (2) PATCH: лоадер всегда поверх */
+/* ✅ если поддерживается — включаем difference как у тебя */
+@supports (mix-blend-mode:difference){
+  .rg-loading{
+    color:#fff;
+    mix-blend-mode:difference;
+  }
+}
+
+/* ✅ (2) лоадер всегда поверх */
 #rg-gallery .rg-loading{ z-index:999; }
+
+/* ✅ до старта JS: показываем loading сразу */
+#rg-gallery:not([data-rg-init="1"]) .rg-loading{
+  display:block !important;
+}
 
 .rg-side.is-loading,
 .rg-main.is-loading,
 .rg-video.is-loading{ opacity:0; }
 
-/* tap for sound */
+/* tap for sound — НЕ ТРОГАЮ */
 .rg-unmute{
   position:absolute;
   left:50%;
   top:50%;
   transform:translate(-50%,-50%);
   display:none;
-  z-index:1001; /* ✅ (2) выше лоадера */
+  z-index:1001;
   cursor:pointer;
   user-select:none;
   -webkit-tap-highlight-color:transparent;
@@ -156,6 +195,7 @@
   border:1px solid rgba(0,0,0,.12);
   padding:12px 16px;
   border-radius:999px;
+  pointer-events:auto; /* ✅ чтобы тап работал */
 }
 
 .rg-btn{
@@ -184,7 +224,6 @@
   .rg-centerSlot{ width:92vw; }
 }
 
-/* если центр wide — убираем боковые слоты целиком */
 #rg-gallery.rg-wideCenter .rg-sideSlot{
   display:none !important;
 }
@@ -225,7 +264,6 @@
     return item.type === "video" ? (item.poster || "") : (item.src || "");
   }
 
-  /* ✅ (3) preload с приоритетами + ✅ try/catch */
   function preloadImg(src, priority){
     if(!src) return Promise.resolve(false);
     if(imgCache.has(src)) return imgCache.get(src);
@@ -279,7 +317,7 @@
       v.src = item.src;
       if(item.poster) v.poster = item.poster;
 
-      v.autoplay = true;
+      v.autoplay = true;      /* ✅ autoplay обязателен */
       v.loop = true;
       v.playsInline = true;
       v.preload = "auto";
@@ -297,7 +335,6 @@
       center.appendChild(unmute);
       activeVideo = v;
 
-      /* ✅ (5) снимаем loading раньше: playing тоже */
       const hideLoader = ()=>{
         v.classList.remove("is-loading");
         setLoading(center,false);
@@ -309,9 +346,9 @@
 
       (async ()=>{
         try{
-          v.muted = false;   /* autoplay со звуком НЕ убираю */
+          v.muted = false;   /* звук пробуем */
           v.volume = 1;
-          await v.play();
+          await v.play();    /* ✅ autoplay запускаем */
           unmute.classList.remove("is-on");
         }catch(e){
           try{
@@ -362,7 +399,6 @@
     const hideSides = !!elements[i].wide;
     gallery.classList.toggle("rg-wideCenter", hideSides);
 
-    /* loading сразу: центр всегда, боковые только если они будут видны */
     setLoading(center, true);
     if(!hideSides){
       setLoading(left.parentElement, true);
@@ -374,7 +410,6 @@
       right.classList.remove("is-loading");
     }
 
-    /* ✅ (3) приоритеты: текущий high, соседи low, но только если боковые видны */
     const tasks = [preloadImg(thumbSrc(elements[i]), "high")];
     if(!hideSides){
       tasks.push(
@@ -392,7 +427,6 @@
 
     showCenter(elements[i]);
 
-    /* фон: второе кольцо */
     const bg = ()=>{
       const p2 = (p - 1 + elements.length) % elements.length;
       const n2 = (n + 1) % elements.length;
@@ -406,7 +440,6 @@
   prevBtn.onclick = ()=>show(index - 1);
   nextBtn.onclick = ()=>show(index + 1);
 
-  /* ✅ (6) быстрый старт */
   preloadImg(thumbSrc(elements[0]), "high");
   preloadImg(thumbSrc(elements[1]), "low");
   preloadImg(thumbSrc(elements[2]), "low");
