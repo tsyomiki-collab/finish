@@ -20,6 +20,12 @@
   <button class="rg-btn rg-next" type="button" aria-label="Next">⟩</button>
 </div>
 
+<!-- ✅ (1) ПРОГРЕВ -->
+<link rel="dns-prefetch" href="//raw.githubusercontent.com">
+<link rel="preconnect" href="https://raw.githubusercontent.com" crossorigin>
+<link rel="dns-prefetch" href="//res.cloudinary.com">
+<link rel="preconnect" href="https://res.cloudinary.com" crossorigin>
+
 <style>
 @font-face{
   font-family:"SegoeUI";
@@ -102,6 +108,19 @@
   background:transparent;
 }
 
+/* ✅ постер поверх видео, пока видео реально не playing */
+.rg-posterOverlay{
+  position:absolute;
+  inset:0;
+  width:100%;
+  height:100%;
+  object-fit:contain;
+  object-position:center;
+  display:none;
+  pointer-events:none;
+}
+.rg-posterOverlay.is-on{ display:block; }
+
 /* loading... (mix blend) */
 .rg-loading{
   position:absolute;
@@ -125,12 +144,15 @@
 }
 .rg-loading.is-on{ display:block; }
 
+/* ✅ (2) лоадер всегда поверх */
+#rg-gallery .rg-loading{ z-index:999; }
+
 /* пока грузится — скрываем контент */
 .rg-side.is-loading,
 .rg-main.is-loading,
 .rg-video.is-loading{ opacity:0; }
 
-/* overlay “tap to sound” (как раньше: белая плашка + обводка) */
+/* overlay “tap to sound” */
 .rg-unmute{
   position:absolute;
   inset:0;
@@ -140,6 +162,7 @@
   cursor:pointer;
   user-select:none;
   -webkit-tap-highlight-color:transparent;
+  z-index:5;
 }
 .rg-unmute.is-on{ display:flex; }
 
@@ -148,7 +171,7 @@
 
   font-family:"SegoeUI","Segoe UI",-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif;
   font-weight:300;
-  font-size:15px;           /* подобрано */
+  font-size:15px;
   letter-spacing:.01em;
   line-height:18px;
 
@@ -239,13 +262,15 @@
     return item.type === "video" ? (item.poster || "") : (item.src || "");
   }
 
-  function preload(src){
+  /* ✅ (3) preload с приоритетом */
+  function preloadImg(src, priority){
     if(!src) return Promise.resolve(false);
     if(preloadCache.has(src)) return preloadCache.get(src);
 
     const p = new Promise(resolve=>{
       const img = new Image();
       img.decoding = "async";
+      try{ if(priority) img.fetchPriority = priority; }catch(e){}
       img.onload = () => resolve(true);
       img.onerror = () => resolve(false);
       img.src = src;
@@ -261,8 +286,15 @@
   }
 
   function setSidesHidden(h){
-    left.style.visibility  = h ? "hidden" : "visible";
-    right.style.visibility = h ? "hidden" : "visible";
+    // ✅ прячем ДО включения лоадеров (чтобы не мигало)
+    left.parentElement.style.display  = h ? "none" : "";
+    right.parentElement.style.display = h ? "none" : "";
+    if(h){
+      setLoading(left.parentElement, false);
+      setLoading(right.parentElement, false);
+      left.classList.remove("is-loading");
+      right.classList.remove("is-loading");
+    }
   }
 
   function markSide(imgEl, item){
@@ -283,7 +315,7 @@
     imgEl.classList.add("is-loading");
     imgEl.decoding = "async";
     imgEl.loading = "eager";
-    imgEl.fetchPriority = "low";
+    try{ imgEl.fetchPriority = "low"; }catch(e){}
 
     imgEl.onload = ()=>{ imgEl.classList.remove("is-loading"); setLoading(slot,false); };
     imgEl.onerror= ()=>{ imgEl.classList.remove("is-loading"); setLoading(slot,false); };
@@ -294,9 +326,16 @@
 
   function showCenter(item){
     stopVideo();
+
     center.innerHTML = '<span class="rg-loading is-on" aria-hidden="true">loading...</span>';
 
     if(item.type === "video"){
+      // ✅ (4) постер-оверлей, чтобы не было белого экрана до playing
+      const posterOverlay = document.createElement("img");
+      posterOverlay.className = "rg-posterOverlay is-on";
+      posterOverlay.decoding = "async";
+      posterOverlay.src = item.poster || "";
+
       const v = document.createElement("video");
       v.className = "rg-video is-loading";
       v.src = item.src;
@@ -318,17 +357,27 @@
       unmute.innerHTML = "<span>tap to sound</span>";
 
       center.appendChild(v);
+      center.appendChild(posterOverlay);
       center.appendChild(unmute);
       activeVideo = v;
 
-      const hideLoader = ()=>{
+      const ready = ()=>{
         v.classList.remove("is-loading");
         setLoading(center, false);
       };
-      v.addEventListener("loadeddata", hideLoader, {once:true});
-      v.addEventListener("canplay", hideLoader, {once:true});
-      v.onerror = ()=>{ hideLoader(); };
 
+      // ✅ убираем постер только когда видео реально играет
+      v.addEventListener("playing", ()=>{
+        posterOverlay.classList.remove("is-on");
+        ready();
+      }, {once:true});
+
+      // если не дошли до playing, хотя бы уберём loading когда есть данные
+      v.addEventListener("loadeddata", ready, {once:true});
+      v.addEventListener("canplay", ready, {once:true});
+      v.onerror = ()=>{ ready(); posterOverlay.classList.add("is-on"); };
+
+      // ✅ AUTOPLAY СО ЗВУКОМ: как у тебя — best effort (не убираю)
       const trySound = async ()=>{
         try{
           v.muted = false;
@@ -361,7 +410,7 @@
     img.className = "rg-main is-loading";
     img.decoding = "async";
     img.loading = "eager";
-    img.fetchPriority = "high";
+    try{ img.fetchPriority = "high"; }catch(e){}
 
     img.onload = ()=>{ img.classList.remove("is-loading"); setLoading(center,false); };
     img.onerror= ()=>{ img.classList.remove("is-loading"); setLoading(center,false); };
@@ -380,28 +429,38 @@
     const p = (i - 1 + elements.length) % elements.length;
     const n = (i + 1) % elements.length;
 
-    setLoading(left.parentElement, true);
-    setLoading(right.parentElement, true);
+    // ✅ (5) если центр wide:true и НЕ видео — прячем боковые заранее
+    const hideSidesNow = !!elements[i].wide && elements[i].type !== "video";
+    setSidesHidden(hideSidesNow);
+
+    // лоадер центра всегда
     setLoading(center, true);
 
+    // боковые лоадеры — только если боковые видимы
+    if(!hideSidesNow){
+      setLoading(left.parentElement, true);
+      setLoading(right.parentElement, true);
+    }
+
     await Promise.all([
-      preload(thumbSrc(elements[i])),
-      preload(thumbSrc(elements[p])),
-      preload(thumbSrc(elements[n]))
+      preloadImg(thumbSrc(elements[i]), "high"),
+      preloadImg(thumbSrc(elements[p]), "low"),
+      preloadImg(thumbSrc(elements[n]), "low")
     ]);
     if(t !== token) return;
 
-    setSide(left,  elements[p]);
-    setSide(right, elements[n]);
+    if(!hideSidesNow){
+      setSide(left,  elements[p]);
+      setSide(right, elements[n]);
+    }
     showCenter(elements[i]);
 
-    setSidesHidden(!!elements[i].wide && elements[i].type !== "video");
-
+    // второе кольцо — в фоне
     const p2 = (p - 1 + elements.length) % elements.length;
     const n2 = (n + 1) % elements.length;
     const bg = ()=>{
-      preload(thumbSrc(elements[p2]));
-      preload(thumbSrc(elements[n2]));
+      preloadImg(thumbSrc(elements[p2]), "low");
+      preloadImg(thumbSrc(elements[n2]), "low");
     };
     if("requestIdleCallback" in window) requestIdleCallback(bg, {timeout:600});
     else setTimeout(bg, 0);
@@ -410,7 +469,11 @@
   prevBtn.addEventListener("click", ()=>show(index - 1));
   nextBtn.addEventListener("click", ()=>show(index + 1));
 
+  // быстрый старт
+  preloadImg(thumbSrc(elements[0]), "high");
+  preloadImg(thumbSrc(elements[1]), "low");
+  preloadImg(thumbSrc(elements[2]), "low");
+
   show(0);
 })();
 </script>
-
