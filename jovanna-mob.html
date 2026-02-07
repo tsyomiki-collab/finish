@@ -70,23 +70,23 @@
   if(!gallery||gallery.dataset.rgInit==="1")return;
   gallery.dataset.rgInit="1";
 
-  // ✅ (4) твои элементы
+  // ✅ (4) МАТЕРИАЛЫ (как во 2-м коде): объекты {type, src}
   const elements=[
-      "https://raw.githubusercontent.com/tsyomiki-collab/jovan-s/main/1.png",
-    "https://raw.githubusercontent.com/tsyomiki-collab/jovan-s/main/2.png",
-    "https://raw.githubusercontent.com/tsyomiki-collab/jovan-s/main/3.png",
-    "https://raw.githubusercontent.com/tsyomiki-collab/jovan-s/main/4.png",
-    "https://raw.githubusercontent.com/tsyomiki-collab/jovan-s/main/5.png",
-    "https://raw.githubusercontent.com/tsyomiki-collab/jovan-s/main/6.png",
-    "https://raw.githubusercontent.com/tsyomiki-collab/jovan-s/main/7.png",
-    "https://raw.githubusercontent.com/tsyomiki-collab/jovan-s/main/8.png",
-    "https://raw.githubusercontent.com/tsyomiki-collab/jovan-s/main/9.png",
-    "https://raw.githubusercontent.com/tsyomiki-collab/jovan-s/main/10.jpg",
-    "https://raw.githubusercontent.com/tsyomiki-collab/jovan-s/main/11.png",
-    "https://raw.githubusercontent.com/tsyomiki-collab/jovan-s/main/12.png",
-    "https://raw.githubusercontent.com/tsyomiki-collab/jovan-s/main/13.png",
-    "https://raw.githubusercontent.com/tsyomiki-collab/jovan-s/main/14.png",
-    "https://raw.githubusercontent.com/tsyomiki-collab/jovan-s/main/15.png"
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/jovan-s/main/1.png"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/jovan-s/main/2.png"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/jovan-s/main/3.png"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/jovan-s/main/4.png"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/jovan-s/main/5.png"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/jovan-s/main/6.png"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/jovan-s/main/7.png"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/jovan-s/main/8.png"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/jovan-s/main/9.png"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/jovan-s/main/10.jpg"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/jovan-s/main/11.png"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/jovan-s/main/12.png"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/jovan-s/main/13.png"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/jovan-s/main/14.png"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/jovan-s/main/15.png"}
   ];
 
   let index=0, token=0;
@@ -172,16 +172,16 @@
     if(i>=n)i=0;
     index=i;
 
-    setLoading(true);          // ✅ отчёт: включаю лоадинг сразу
-    preloadAround(i);          // ✅ отчёт: начинаю прогрев соседей
+    setLoading(true);
+    preloadAround(i);
 
     const src = elements[i].src;
-    await ensureReady(src, "high");  // ✅ отчёт: жду load+decode текущего
+    await ensureReady(src, "high");
     if(t!==token) return;
 
     clearCenterKeepUI();
-    center.insertBefore(ensureImg(src), nav); // ✅ отчёт: монтирую картинку
-    setLoading(false);                        // ✅ отчёт: выключаю лоадинг
+    center.insertBefore(ensureImg(src), nav);
+    setLoading(false);
   }
 
   prevBtn.onclick=()=>show(index-1);
@@ -194,7 +194,6 @@
     if(Math.abs(d)>40){ d<0?show(index+1):show(index-1) }
   },{passive:true});
 
-  // старт
   preloadAround(0);
   show(0);
 })();
