@@ -20,7 +20,7 @@
   <button class="rg-btn rg-next" type="button" aria-label="Next">⟩</button>
 </div>
 
-<!-- ✅ (1) ПРОГРЕВ -->
+<!-- прогрев -->
 <link rel="dns-prefetch" href="//raw.githubusercontent.com">
 <link rel="preconnect" href="https://raw.githubusercontent.com" crossorigin>
 <link rel="dns-prefetch" href="//c.s-microsoft.com">
@@ -59,7 +59,6 @@
   flex-wrap:nowrap;
 }
 
-/* боковые слоты */
 .rg-sideSlot{
   position:relative;
   width:360px;
@@ -99,36 +98,29 @@
   transform-origin:center center;
 }
 
-/* ✅ КЛЮЧ: когда центр wide:true — боковые СЛОТЫ вообще не существуют */
 #rg-gallery.rg-wide .rg-sideSlot{
   display:none;
 }
 
-/* loading... (с blend mode) */
 .rg-loading{
   position:absolute;
   left:50%;
   top:50%;
   transform:translate(-50%,-50%);
-
   font-family:"SegoeUI","Segoe UI",-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif;
   font-weight:300;
-  font-size:14px;
+  font-size:10px;
   letter-spacing:.01em;
-  line-height:16px;
-
+  line-height:1;
   color:#fff;
   mix-blend-mode:difference;
   opacity:.9;
-
   pointer-events:none;
   user-select:none;
   display:none;
+  z-index:10;
 }
 .rg-loading.is-on{ display:block; }
-
-/* ✅ (2) PATCH: лоадер всегда поверх картинки */
-#rg-gallery .rg-loading{ z-index:999; }
 
 .rg-side.is-loading,
 .rg-main.is-loading{ opacity:0; }
@@ -142,23 +134,13 @@
   display:flex;
   align-items:center;
   justify-content:center;
-  box-sizing:border-box;
   font-size:3rem;
   line-height:1;
-  padding:0;
   border:0;
   background:transparent;
   color:#666;
   cursor:pointer;
   user-select:none;
-  appearance:none;
-  -webkit-appearance:none;
-  -webkit-tap-highlight-color:transparent;
-}
-.rg-btn:focus{ outline:none; }
-.rg-btn:focus-visible{
-  outline:2px solid rgba(0,0,0,.25);
-  outline-offset:3px;
 }
 .rg-prev{ left:80px; }
 .rg-next{ right:80px; }
@@ -167,9 +149,6 @@
   .rg-sideSlot{ display:none; }
   .rg-centerSlot{ width:92vw; }
 }
-
-.rg-centerSlot, .rg-sideSlot { contain: layout paint size; }
-.rg-main { will-change: contents; }
 </style>
 
 <script>
@@ -194,160 +173,100 @@
   ];
 
   let index = 0, token = 0;
-
-  const left    = document.getElementById("rg-left");
-  const right   = document.getElementById("rg-right");
-  const center  = document.getElementById("rg-center");
+  const left  = document.getElementById("rg-left");
+  const right = document.getElementById("rg-right");
+  const center= document.getElementById("rg-center");
   const prevBtn = gallery.querySelector(".rg-prev");
   const nextBtn = gallery.querySelector(".rg-next");
-  if(!left || !right || !center || !prevBtn || !nextBtn) return;
 
-  const preloadCache = new Map();
+  const cache = new Map();
 
-  /* ✅ (3) preload с приоритетами + try/catch */
   function preload(src, priority){
-    if(!src) return Promise.resolve(false);
-    if(preloadCache.has(src)) return preloadCache.get(src);
-
-    const p = new Promise(resolve=>{
+    if(cache.has(src)) return cache.get(src);
+    const p = new Promise(res=>{
       const img = new Image();
-      img.decoding = "async";
-      try{ if(priority) img.fetchPriority = priority; }catch(e){}
-      img.onload = () => resolve(true);
-      img.onerror = () => resolve(false);
-      img.src = src;
+      img.decoding="async";
+      try{ img.fetchPriority = priority; }catch(e){}
+      img.onload=()=>res(true);
+      img.onerror=()=>res(false);
+      img.src=src;
     });
-
-    preloadCache.set(src, p);
+    cache.set(src,p);
     return p;
   }
 
-  function setLoading(slotEl, on){
-    const l = slotEl.querySelector(".rg-loading");
+  function setLoading(slot, on){
+    const l = slot.querySelector(".rg-loading");
     if(l) l.classList.toggle("is-on", !!on);
   }
 
-  function markSide(imgEl, item){
-    imgEl.classList.toggle("rg-wide", !!(item && item.wide));
-  }
-
-  function setSide(imgEl, item){
-    const slot = imgEl.parentElement;
-    setLoading(slot, true);
-
-    imgEl.classList.add("is-loading");
-    imgEl.decoding = "async";
-    imgEl.loading = "eager";
-    try{ imgEl.fetchPriority = "low"; }catch(e){}
-
-    imgEl.onload = ()=>{
-      imgEl.classList.remove("is-loading");
-      setLoading(slot,false);
+  function setSide(img, item){
+    if(!item){ img.removeAttribute("src"); return; }
+    setLoading(img.parentElement,true);
+    img.classList.add("is-loading");
+    img.onload = img.onerror = ()=>{
+      img.classList.remove("is-loading");
+      setLoading(img.parentElement,false);
     };
-    imgEl.onerror= ()=>{
-      imgEl.classList.remove("is-loading");
-      setLoading(slot,false);
-    };
-
-    imgEl.src = item?.src || "";
-    markSide(imgEl, item);
+    img.src = item.src;
+    img.classList.toggle("rg-wide", !!item.wide);
   }
 
   function showCenter(item){
-    setLoading(center, true);
+    setLoading(center,true);
 
-    // оставляем один-единственный лоадер в центре, без наслоений
-    center.innerHTML = '<span class="rg-loading is-on" aria-hidden="true">loading...</span>';
+    // УБРАЛИ innerHTML → больше нет двойных loading
+    const oldImg = center.querySelector("img");
+    if(oldImg) oldImg.remove();
 
-    const img = document.createElement("img");
-    img.className = "rg-main is-loading";
-    img.decoding = "async";
-    img.loading = "eager";
-    try{ img.fetchPriority = "high"; }catch(e){}
-
-    img.onload = ()=>{
+    let img = document.createElement("img");
+    img.className="rg-main is-loading";
+    img.decoding="async";
+    try{ img.fetchPriority="high"; }catch(e){}
+    img.onload = img.onerror = ()=>{
       img.classList.remove("is-loading");
       setLoading(center,false);
     };
-    img.onerror= ()=>{
-      img.classList.remove("is-loading");
-      setLoading(center,false);
-    };
-
-    img.src = item.src;
+    img.src=item.src;
     center.appendChild(img);
   }
 
-  function hideSidesCompletely(h){
-    gallery.classList.toggle("rg-wide", !!h);
-
-    if(h){
-      setLoading(left.parentElement, false);
-      setLoading(right.parentElement, false);
-      left.classList.remove("is-loading");
-      right.classList.remove("is-loading");
-    }
-  }
-
-  async function show(i){
+  function show(i){
     const t = ++token;
+    if(i<0) i=elements.length-1;
+    if(i>=elements.length) i=0;
+    index=i;
 
-    if(i < 0) i = elements.length - 1;
-    if(i >= elements.length) i = 0;
-    index = i;
+    const p=(i-1+elements.length)%elements.length;
+    const n=(i+1)%elements.length;
 
-    const p = (i - 1 + elements.length) % elements.length;
-    const n = (i + 1) % elements.length;
+    const wide = !!elements[i].wide;
+    gallery.classList.toggle("rg-wide", wide);
 
-    /* ✅ (4) сначала решаем wide, чтобы боковые не успели показать loading */
-    const isWide = !!elements[i].wide;
-    hideSidesCompletely(isWide);
-
-    setLoading(center, true);
-
-    if(!isWide){
-      setLoading(left.parentElement, true);
-      setLoading(right.parentElement, true);
-    }else{
-      setLoading(left.parentElement, false);
-      setLoading(right.parentElement, false);
+    setLoading(center,true);
+    if(!wide){
+      setLoading(left.parentElement,true);
+      setLoading(right.parentElement,true);
     }
 
-    /* ✅ (3)(4) текущий high, соседи low только если боковые видимы */
-    const tasks = [preload(elements[i].src, "high")];
-    if(!isWide){
-      tasks.push(preload(elements[p].src, "low"), preload(elements[n].src, "low"));
-    }
-
-    await Promise.all(tasks);
-    if(t !== token) return;
-
-    if(!isWide){
-      setSide(left,  elements[p]);
-      setSide(right, elements[n]);
-    }
-
-    showCenter(elements[i]);
-
-    // второе кольцо — в фоне
-    const p2 = (p - 1 + elements.length) % elements.length;
-    const n2 = (n + 1) % elements.length;
-    const bg = ()=>{
-      preload(elements[p2].src, "low");
-      preload(elements[n2].src, "low");
-    };
-    if("requestIdleCallback" in window) requestIdleCallback(bg, {timeout:600});
-    else setTimeout(bg, 0);
+    Promise.all([
+      preload(elements[i].src,"high"),
+      !wide && preload(elements[p].src,"low"),
+      !wide && preload(elements[n].src,"low")
+    ]).then(()=>{
+      if(t!==token) return;
+      if(!wide){
+        setSide(left,elements[p]);
+        setSide(right,elements[n]);
+      }
+      showCenter(elements[i]);
+    });
   }
 
-  prevBtn.addEventListener("click", ()=>show(index - 1));
-  nextBtn.addEventListener("click", ()=>show(index + 1));
+  prevBtn.onclick=()=>show(index-1);
+  nextBtn.onclick=()=>show(index+1);
 
-  /* ✅ (5) быстрый старт */
-  preload(elements[0]?.src, "high");
-  preload(elements[1]?.src, "low");
-  preload(elements[2]?.src, "low");
-
+  preload(elements[0].src,"high");
   show(0);
 })();
 </script>
