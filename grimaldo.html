@@ -21,6 +21,12 @@
   <button class="rg-btn rg-next" type="button">⟩</button>
 </div>
 
+<!-- ✅ прогрев доменов (ускоряет) -->
+<link rel="dns-prefetch" href="//raw.githubusercontent.com">
+<link rel="preconnect" href="https://raw.githubusercontent.com" crossorigin>
+<link rel="dns-prefetch" href="//res.cloudinary.com">
+<link rel="preconnect" href="https://res.cloudinary.com" crossorigin>
+
 <style>
 #rg-gallery{
   position:fixed;
@@ -129,7 +135,7 @@
   top:50%;
   transform:translate(-50%,-50%);
   font-family:"SegoeUI","Segoe UI",-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif;
-  font-weight:300;       /* кстати у тебя тут 600 — если надо light, ставь 300 */
+  font-weight:300;
   font-size:13px;
   letter-spacing:.01em;
   line-height:16px;
@@ -144,8 +150,12 @@
 }
 .rg-loading.is-on{ display:block; }
 
+/* ✅ главное: когда медиа грузится — прячем его, а лоадер сверху */
 .rg-side.is-loading,
 .rg-main.is-loading{ opacity:0; }
+
+/* ✅ PATCH: лоадер всегда поверх (чтобы не было белого экрана со стрелками без текста) */
+#rg-gallery .rg-loading{ z-index:999; }
 
 /* подсказка для звука */
 .rg-soundHint{
@@ -155,7 +165,7 @@
   transform:translateX(-50%);
   padding:10px 14px;
   font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
-  font-weight:300;              /* ✅ 300 */
+  font-weight:300;
   font-size:13px;
   letter-spacing:.01em;
   line-height:16px;
@@ -231,13 +241,33 @@
     soundHint.style.display="none";
   }
 
-  function preloadImage(src){
+  /* ✅ PATCH: <link rel="preload"> для первых картинок/постеров (ускоряет старт и “первый кадр”) */
+  try{
+    const head = document.head || document.getElementsByTagName("head")[0];
+    const urls = [];
+    for(let i=0;i<elements.length && urls.length<10;i++){
+      const u = previewSrc(elements[i]);
+      if(u && !urls.includes(u)) urls.push(u);
+    }
+    urls.slice(0,8).forEach((href,i)=>{
+      if(document.querySelector(`link[rel="preload"][href="${href}"]`)) return;
+      const link=document.createElement("link");
+      link.rel="preload";
+      link.as="image";
+      link.href=href;
+      try{ link.fetchPriority = (i<2 ? "high" : "low"); }catch(e){}
+      head.appendChild(link);
+    });
+  }catch(e){}
+
+  function preloadImage(src, priority){
     if(!src) return Promise.resolve(false);
     if(imgCache.has(src)) return imgCache.get(src);
 
     const p = new Promise(r=>{
       const i=new Image();
       i.decoding="async";
+      try{ if(priority) i.fetchPriority = priority; }catch(e){}
       i.onload=()=>r(true);
       i.onerror=()=>r(false);
       i.src=src;
@@ -258,14 +288,14 @@
     });
   }
 
-  function preloadElement(el){
+  function preloadElement(el, priority){
     if(el.type==="video"){
       return Promise.all([
-        preloadImage(el.poster),
+        preloadImage(el.poster, priority),
         preloadVideoMeta(el.src)
       ]);
     }
-    return preloadImage(el.src);
+    return preloadImage(el.src, priority);
   }
 
   function getIsWideByImage(src){
@@ -273,6 +303,7 @@
     if(isWideCache.has(src)) return Promise.resolve(isWideCache.get(src));
     return new Promise(resolve=>{
       const img=new Image();
+      img.decoding="async";
       img.onload=()=>{
         const wide=img.naturalWidth>img.naturalHeight;
         isWideCache.set(src,wide);
@@ -292,12 +323,14 @@
 
   function setSide(imgEl, src){
     const slot = imgEl.parentElement;
-    setLoading(slot, true);
 
+    // ✅ мгновенно: лоадер ON, картинка скрыта
+    setLoading(slot, true);
     imgEl.classList.add("is-loading");
+
     imgEl.decoding="async";
     imgEl.loading="eager";
-    imgEl.fetchPriority="low";
+    try{ imgEl.fetchPriority="low"; }catch(e){}
 
     imgEl.onload=()=>{ imgEl.classList.remove("is-loading"); setLoading(slot,false); };
     imgEl.onerror=()=>{ imgEl.classList.remove("is-loading"); setLoading(slot,false); };
@@ -308,7 +341,7 @@
   function showCenter(el){
     stopVideo();
 
-    // включаем лоадер
+    // ✅ центр: всегда сначала “loading...”, чтобы не было белого экрана
     center.innerHTML = '<span class="rg-loading is-on" aria-hidden="true">loading...</span>';
     center.appendChild(soundHint);
 
@@ -332,13 +365,14 @@
       v.setAttribute("controlslist","nodownload noplaybackrate noremoteplayback");
       v.setAttribute("disablepictureinpicture","");
 
-      // когда появится кадр — убираем loading
+      // ✅ когда реально пошёл кадр — выключаем loading
       const ready = ()=>{
         v.classList.remove("is-loading");
         setLoading(center,false);
       };
       v.addEventListener("loadeddata", ready, {once:true});
       v.addEventListener("canplay", ready, {once:true});
+      v.addEventListener("playing", ready, {once:true});
       v.onerror = ()=>{ v.classList.remove("is-loading"); setLoading(center,false); };
 
       center.appendChild(v);
@@ -380,7 +414,7 @@
     img.className="rg-main is-loading";
     img.decoding="async";
     img.loading="eager";
-    img.fetchPriority="high";
+    try{ img.fetchPriority="high"; }catch(e){}
 
     img.onload=()=>{ img.classList.remove("is-loading"); setLoading(center,false); };
     img.onerror=()=>{ img.classList.remove("is-loading"); setLoading(center,false); };
@@ -399,18 +433,18 @@
     const p=(i-1+elements.length)%elements.length;
     const n=(i+1)%elements.length;
 
-    // мгновенно показываем loading на всех слотах
+    // ✅ МГНОВЕННО включаем loading, чтобы не было “белый фон + стрелки”
     setLoading(left.parentElement, true);
     setLoading(right.parentElement, true);
     setLoading(center, true);
 
-    // прелоад текущий + соседи
+    // ✅ текущий — high, соседи — low
     await Promise.all([
-      preloadElement(elements[i]),
-      preloadElement(elements[p]),
-      preloadElement(elements[n])
+      preloadElement(elements[i], "high"),
+      preloadElement(elements[p], "low"),
+      preloadElement(elements[n], "low")
     ]);
-    if(t!==token)return;
+    if(t!==token) return;
 
     setSide(left,  previewSrc(elements[p]));
     setSide(right, previewSrc(elements[n]));
@@ -420,19 +454,24 @@
     const p2=(p-1+elements.length)%elements.length;
     const n2=(n+1)%elements.length;
     const bg=()=>{
-      preloadElement(elements[p2]);
-      preloadElement(elements[n2]);
+      preloadElement(elements[p2], "low");
+      preloadElement(elements[n2], "low");
     };
     if("requestIdleCallback" in window) requestIdleCallback(bg, {timeout:600});
     else setTimeout(bg, 0);
 
     const wide = await getIsWide(elements[i]);
-    if(t!==token)return;
+    if(t!==token) return;
     gallery.classList.toggle("rg-wide", wide);
   }
 
   prevBtn.onclick=()=>show(index-1);
   nextBtn.onclick=()=>show(index+1);
+
+  /* ✅ быстрый старт: прогреваем первые 2-3 */
+  preloadElement(elements[0], "high");
+  preloadElement(elements[1], "low");
+  preloadElement(elements[2], "low");
 
   show(0);
 })();
