@@ -20,6 +20,14 @@
   <button class="rg-btn rg-next" type="button" aria-label="Next">⟩</button>
 </div>
 
+<!-- ✅ (1) ПРОГРЕВ ДОМЕНОВ -->
+<link rel="dns-prefetch" href="//raw.githubusercontent.com">
+<link rel="preconnect" href="https://raw.githubusercontent.com" crossorigin>
+<link rel="dns-prefetch" href="//res.cloudinary.com">
+<link rel="preconnect" href="https://res.cloudinary.com" crossorigin>
+<link rel="dns-prefetch" href="//c.s-microsoft.com">
+<link rel="preconnect" href="https://c.s-microsoft.com" crossorigin>
+
 <style>
 @font-face{
   font-family:"SegoeUI";
@@ -125,12 +133,15 @@
 }
 .rg-loading.is-on{ display:block; }
 
+/* ✅ (2) PATCH: лоадер всегда сверху */
+#rg-gallery .rg-loading{ z-index:999; }
+
 /* пока грузится — скрываем контент */
 .rg-side.is-loading,
 .rg-main.is-loading,
 .rg-video.is-loading{ opacity:0; }
 
-/* overlay “tap to sound” (как раньше: белая плашка + обводка) */
+/* overlay “tap to sound” */
 .rg-unmute{
   position:absolute;
   inset:0;
@@ -145,13 +156,11 @@
 
 .rg-unmute span{
   padding:12px 16px;
-
   font-family:"SegoeUI","Segoe UI",-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif;
   font-weight:300;
-  font-size:15px;           /* подобрано */
+  font-size:15px;
   letter-spacing:.01em;
   line-height:18px;
-
   border:1px solid rgba(0,0,0,.12);
   background:rgba(255,255,255,.92);
   border-radius:999px;
@@ -205,7 +214,6 @@
   gallery.dataset.rgInit = "1";
 
   const elements=[
- 
     {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/midnight/main/1.jpg", wide:true},
     {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/midnight/main/2.jpg", wide:true},
     {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/midnight/main/3.jpg"},
@@ -214,7 +222,7 @@
     {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/midnight/main/6.jpg"},
     {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/midnight/main/7.jpg"},
     {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/midnight/main/8.jpg", wide:true},
-       {
+    {
       type:'video',
       src:"https://res.cloudinary.com/dmtnse4sz/video/upload/v1769859479/9_tz6zq9.mp4",
       poster:"https://raw.githubusercontent.com/tsyomiki-collab/midnight/main/Screenshot%202026-01-31%20at%2015.42.16.png"
@@ -240,13 +248,15 @@
     return item.type === "video" ? (item.poster || "") : (item.src || "");
   }
 
-  function preload(src){
+  /* ✅ (3) preload с приоритетами + ✅ (4) try/catch */
+  function preload(src, priority){
     if(!src) return Promise.resolve(false);
     if(preloadCache.has(src)) return preloadCache.get(src);
 
     const p = new Promise(resolve=>{
       const img = new Image();
       img.decoding = "async";
+      try{ if(priority) img.fetchPriority = priority; }catch(e){}
       img.onload = () => resolve(true);
       img.onerror = () => resolve(false);
       img.src = src;
@@ -284,7 +294,7 @@
     imgEl.classList.add("is-loading");
     imgEl.decoding = "async";
     imgEl.loading = "eager";
-    imgEl.fetchPriority = "low";
+    try{ imgEl.fetchPriority = "low"; }catch(e){}  /* ✅ (4) */
 
     imgEl.onload = ()=>{ imgEl.classList.remove("is-loading"); setLoading(slot,false); };
     imgEl.onerror= ()=>{ imgEl.classList.remove("is-loading"); setLoading(slot,false); };
@@ -322,14 +332,17 @@
       center.appendChild(unmute);
       activeVideo = v;
 
+      /* ✅ (6) снимаем loading по самому раннему событию */
       const hideLoader = ()=>{
         v.classList.remove("is-loading");
         setLoading(center, false);
       };
+      v.addEventListener("playing", hideLoader, {once:true});
       v.addEventListener("loadeddata", hideLoader, {once:true});
       v.addEventListener("canplay", hideLoader, {once:true});
       v.onerror = ()=>{ hideLoader(); };
 
+      /* autoplay СО ЗВУКОМ — НЕ УБИРАЮ */
       const trySound = async ()=>{
         try{
           v.muted = false;
@@ -362,7 +375,7 @@
     img.className = "rg-main is-loading";
     img.decoding = "async";
     img.loading = "eager";
-    img.fetchPriority = "high";
+    try{ img.fetchPriority = "high"; }catch(e){}   /* ✅ (4) */
 
     img.onload = ()=>{ img.classList.remove("is-loading"); setLoading(center,false); };
     img.onerror= ()=>{ img.classList.remove("is-loading"); setLoading(center,false); };
@@ -381,14 +394,16 @@
     const p = (i - 1 + elements.length) % elements.length;
     const n = (i + 1) % elements.length;
 
+    /* loading сразу */
     setLoading(left.parentElement, true);
     setLoading(right.parentElement, true);
     setLoading(center, true);
 
+    /* ✅ (3) приоритеты: текущий high, соседи low */
     await Promise.all([
-      preload(thumbSrc(elements[i])),
-      preload(thumbSrc(elements[p])),
-      preload(thumbSrc(elements[n]))
+      preload(thumbSrc(elements[i]), "high"),
+      preload(thumbSrc(elements[p]), "low"),
+      preload(thumbSrc(elements[n]), "low")
     ]);
     if(t !== token) return;
 
@@ -398,11 +413,12 @@
 
     setSidesHidden(!!elements[i].wide && elements[i].type !== "video");
 
+    /* второе кольцо — в фоне */
     const p2 = (p - 1 + elements.length) % elements.length;
     const n2 = (n + 1) % elements.length;
     const bg = ()=>{
-      preload(thumbSrc(elements[p2]));
-      preload(thumbSrc(elements[n2]));
+      preload(thumbSrc(elements[p2]), "low");
+      preload(thumbSrc(elements[n2]), "low");
     };
     if("requestIdleCallback" in window) requestIdleCallback(bg, {timeout:600});
     else setTimeout(bg, 0);
@@ -411,7 +427,11 @@
   prevBtn.addEventListener("click", ()=>show(index - 1));
   nextBtn.addEventListener("click", ()=>show(index + 1));
 
+  /* ✅ (5) быстрый старт */
+  preload(thumbSrc(elements[0]), "high");
+  preload(thumbSrc(elements[1]), "low");
+  preload(thumbSrc(elements[2]), "low");
+
   show(0);
 })();
 </script>
-
