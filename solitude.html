@@ -20,6 +20,12 @@
   <button class="rg-btn rg-next" type="button" aria-label="Next">⟩</button>
 </div>
 
+<!-- ✅ (1) ПРОГРЕВ -->
+<link rel="dns-prefetch" href="//raw.githubusercontent.com">
+<link rel="preconnect" href="https://raw.githubusercontent.com" crossorigin>
+<link rel="dns-prefetch" href="//c.s-microsoft.com">
+<link rel="preconnect" href="https://c.s-microsoft.com" crossorigin>
+
 <style>
 @font-face{
   font-family:"SegoeUI";
@@ -121,6 +127,9 @@
 }
 .rg-loading.is-on{ display:block; }
 
+/* ✅ (2) PATCH: лоадер всегда поверх картинки */
+#rg-gallery .rg-loading{ z-index:999; }
+
 .rg-side.is-loading,
 .rg-main.is-loading{ opacity:0; }
 
@@ -195,13 +204,15 @@
 
   const preloadCache = new Map();
 
-  function preload(src){
+  /* ✅ (3) preload с приоритетами + try/catch */
+  function preload(src, priority){
     if(!src) return Promise.resolve(false);
     if(preloadCache.has(src)) return preloadCache.get(src);
 
     const p = new Promise(resolve=>{
       const img = new Image();
       img.decoding = "async";
+      try{ if(priority) img.fetchPriority = priority; }catch(e){}
       img.onload = () => resolve(true);
       img.onerror = () => resolve(false);
       img.src = src;
@@ -227,7 +238,7 @@
     imgEl.classList.add("is-loading");
     imgEl.decoding = "async";
     imgEl.loading = "eager";
-    imgEl.fetchPriority = "low";
+    try{ imgEl.fetchPriority = "low"; }catch(e){}
 
     imgEl.onload = ()=>{
       imgEl.classList.remove("is-loading");
@@ -252,7 +263,7 @@
     img.className = "rg-main is-loading";
     img.decoding = "async";
     img.loading = "eager";
-    img.fetchPriority = "high";
+    try{ img.fetchPriority = "high"; }catch(e){}
 
     img.onload = ()=>{
       img.classList.remove("is-loading");
@@ -268,11 +279,9 @@
   }
 
   function hideSidesCompletely(h){
-    // ✅ убираем боковые целиком (и их лоадеры тоже)
     gallery.classList.toggle("rg-wide", !!h);
 
     if(h){
-      // на всякий случай выключаем боковые loader'ы (чтобы никогда не мелькали)
       setLoading(left.parentElement, false);
       setLoading(right.parentElement, false);
       left.classList.remove("is-loading");
@@ -290,14 +299,12 @@
     const p = (i - 1 + elements.length) % elements.length;
     const n = (i + 1) % elements.length;
 
-    // ✅ сначала решаем, надо ли скрыть боковые (иначе они успеют показать свой loading)
+    /* ✅ (4) сначала решаем wide, чтобы боковые не успели показать loading */
     const isWide = !!elements[i].wide;
     hideSidesCompletely(isWide);
 
-    // лоадер центра всегда показываем
     setLoading(center, true);
 
-    // если боковые скрыты — не включаем их лоадеры вообще
     if(!isWide){
       setLoading(left.parentElement, true);
       setLoading(right.parentElement, true);
@@ -306,10 +313,10 @@
       setLoading(right.parentElement, false);
     }
 
-    // подгружаем текущую, а боковые — только если они реально будут видны
-    const tasks = [preload(elements[i].src)];
+    /* ✅ (3)(4) текущий high, соседи low только если боковые видимы */
+    const tasks = [preload(elements[i].src, "high")];
     if(!isWide){
-      tasks.push(preload(elements[p].src), preload(elements[n].src));
+      tasks.push(preload(elements[p].src, "low"), preload(elements[n].src, "low"));
     }
 
     await Promise.all(tasks);
@@ -322,12 +329,12 @@
 
     showCenter(elements[i]);
 
-    // второе кольцо — в фоне (можно всегда, но смысла меньше когда wide)
+    // второе кольцо — в фоне
     const p2 = (p - 1 + elements.length) % elements.length;
     const n2 = (n + 1) % elements.length;
     const bg = ()=>{
-      preload(elements[p2].src);
-      preload(elements[n2].src);
+      preload(elements[p2].src, "low");
+      preload(elements[n2].src, "low");
     };
     if("requestIdleCallback" in window) requestIdleCallback(bg, {timeout:600});
     else setTimeout(bg, 0);
@@ -336,7 +343,11 @@
   prevBtn.addEventListener("click", ()=>show(index - 1));
   nextBtn.addEventListener("click", ()=>show(index + 1));
 
+  /* ✅ (5) быстрый старт */
+  preload(elements[0]?.src, "high");
+  preload(elements[1]?.src, "low");
+  preload(elements[2]?.src, "low");
+
   show(0);
 })();
 </script>
-
