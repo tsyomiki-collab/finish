@@ -94,7 +94,7 @@
   display:block;
 }
 
-/* loading... (mix blend) */
+/* loading... */
 .rg-loading{
   position:absolute;
   left:50%;
@@ -107,8 +107,9 @@
   letter-spacing:.01em;
   line-height:16px;
 
-  color:#fff;
-  mix-blend-mode:difference;
+  /* ✅ fallback: чтобы loading не “исчезал” на белом */
+  color:#111;
+  mix-blend-mode:normal;
   opacity:.9;
 
   pointer-events:none;
@@ -116,6 +117,19 @@
   display:none;
 }
 .rg-loading.is-on{ display:block; }
+
+/* ✅ если поддерживается — оставляем твой difference */
+@supports (mix-blend-mode:difference){
+  .rg-loading{
+    color:#fff;
+    mix-blend-mode:difference;
+  }
+}
+
+/* ✅ ДО старта JS: показываем loading сразу (убирает белый экран со стрелками) */
+#rg-gallery:not([data-rg-init="1"]) .rg-loading{
+  display:block !important;
+}
 
 /* ✅ (2) PATCH: лоадер всегда поверх */
 #rg-gallery .rg-loading{ z-index:999; }
@@ -203,6 +217,23 @@
 
   const cache = new Map();
 
+  /* ✅ (A) link-preload первых картинок (ускоряет самый первый показ) */
+  (function addPreloadLinks(){
+    try{
+      const head = document.head || document.getElementsByTagName("head")[0];
+      const first = [elements[0]?.src, elements[1]?.src, elements[2]?.src].filter(Boolean);
+      first.forEach((href, i)=>{
+        if(document.querySelector(`link[rel="preload"][as="image"][href="${href}"]`)) return;
+        const link = document.createElement("link");
+        link.rel = "preload";
+        link.as  = "image";
+        link.href = href;
+        try{ link.fetchPriority = (i === 0 ? "high" : "low"); }catch(e){}
+        head.appendChild(link);
+      });
+    }catch(e){}
+  })();
+
   /* ✅ (3) preload с приоритетом */
   function preload(url, priority){
     if(!url) return Promise.resolve(false);
@@ -233,7 +264,7 @@
     imgEl.classList.add("is-loading");
     imgEl.decoding = "async";
     imgEl.loading = "eager";
-    try{ imgEl.fetchPriority = "low"; }catch(e){}   /* ✅ (4) */
+    try{ imgEl.fetchPriority = "low"; }catch(e){}
 
     imgEl.onload = ()=>{ imgEl.classList.remove("is-loading"); setLoading(slot,false); };
     imgEl.onerror= ()=>{ imgEl.classList.remove("is-loading"); setLoading(slot,false); };
@@ -249,7 +280,7 @@
     img.className = "rg-main is-loading";
     img.decoding = "async";
     img.loading = "eager";
-    try{ img.fetchPriority = "high"; }catch(e){}     /* ✅ (4) */
+    try{ img.fetchPriority = "high"; }catch(e){}
 
     img.onload = ()=>{ img.classList.remove("is-loading"); setLoading(center,false); };
     img.onerror= ()=>{ img.classList.remove("is-loading"); setLoading(center,false); };
@@ -268,7 +299,7 @@
     const prev = (i - 1 + elements.length) % elements.length;
     const next = (i + 1) % elements.length;
 
-    // ✅ loader сразу (чтобы не было белого экрана со стрелками)
+    // ✅ loader сразу (и центр, и боковые)
     setLoading(left.parentElement, true);
     setLoading(right.parentElement, true);
     setLoading(center, true);
@@ -285,10 +316,9 @@
     setSide(right, elements[next].src);
     showCenter(elements[i]);
 
-    // “второе кольцо” догружаем в фоне
+    // второе кольцо — в фоне
     const prev2 = (prev - 1 + elements.length) % elements.length;
     const next2 = (next + 1) % elements.length;
-
     const bg = ()=>{
       preload(elements[prev2].src, "low");
       preload(elements[next2].src, "low");
