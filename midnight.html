@@ -20,7 +20,6 @@
   <button class="rg-btn rg-next" type="button" aria-label="Next">⟩</button>
 </div>
 
-<!-- ✅ (1) ПРОГРЕВ ДОМЕНОВ -->
 <link rel="dns-prefetch" href="//raw.githubusercontent.com">
 <link rel="preconnect" href="https://raw.githubusercontent.com" crossorigin>
 <link rel="dns-prefetch" href="//res.cloudinary.com">
@@ -95,7 +94,6 @@
 
 .rg-side{ opacity:.8; }
 
-/* уменьшаем ТОЛЬКО горизонтальные боковые */
 .rg-side.rg-wide{
   transform:scale(.68);
   transform-origin:center center;
@@ -110,64 +108,76 @@
   background:transparent;
 }
 
-/* loading... (mix blend) */
+/* ✅ УБИРАЕМ ЛЮБЫЕ НАТИВНЫЕ КНОПКИ/ПАНЕЛИ (особенно на iOS/Safari) */
+.rg-video::-webkit-media-controls,
+.rg-video::-webkit-media-controls-panel,
+.rg-video::-webkit-media-controls-play-button,
+.rg-video::-webkit-media-controls-start-playback-button,
+.rg-video::-webkit-media-controls-timeline,
+.rg-video::-webkit-media-controls-current-time-display,
+.rg-video::-webkit-media-controls-time-remaining-display,
+.rg-video::-webkit-media-controls-volume-slider,
+.rg-video::-webkit-media-controls-mute-button,
+.rg-video::-webkit-media-controls-fullscreen-button{
+  display:none !important;
+  -webkit-appearance:none !important;
+}
+.rg-video{ pointer-events:none; }           /* ✅ чтобы нельзя было тапнуть и “поставить на паузу” */
+.rg-unmute{ pointer-events:auto; }          /* ✅ но тап-зона для звука должна работать */
+
+/* loading... */
 .rg-loading{
   position:absolute;
   left:50%;
   top:50%;
   transform:translate(-50%,-50%);
-
   font-family:"SegoeUI","Segoe UI",-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif;
   font-weight:300;
   font-size:14px;
   letter-spacing:.01em;
   line-height:16px;
-
   color:#fff;
   mix-blend-mode:difference;
   opacity:.9;
-
   pointer-events:none;
   user-select:none;
   display:none;
 }
 .rg-loading.is-on{ display:block; }
-
-/* ✅ (2) PATCH: лоадер всегда сверху */
 #rg-gallery .rg-loading{ z-index:999; }
 
-/* пока грузится — скрываем контент */
 .rg-side.is-loading,
 .rg-main.is-loading,
 .rg-video.is-loading{ opacity:0; }
 
-/* overlay “tap to sound” */
+/* ✅ TAP FOR SOUND — КАК ВО ВТОРОМ КОДЕ */
 .rg-unmute{
   position:absolute;
-  inset:0;
+  left:50%;
+  top:50%;
+  transform:translate(-50%,-50%);
   display:none;
-  align-items:center;
-  justify-content:center;
+  z-index:1001;
   cursor:pointer;
   user-select:none;
   -webkit-tap-highlight-color:transparent;
 }
-.rg-unmute.is-on{ display:flex; }
+.rg-unmute.is-on{ display:block; }
 
-.rg-unmute span{
-  padding:12px 16px;
+.rg-unmute::after{
+  content:"tap for sound";
   font-family:"SegoeUI","Segoe UI",-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif;
   font-weight:300;
   font-size:15px;
   letter-spacing:.01em;
   line-height:18px;
-  border:1px solid rgba(0,0,0,.12);
-  background:rgba(255,255,255,.92);
-  border-radius:999px;
   color:#111;
+  background:rgba(255,255,255,.92);
+  border:1px solid rgba(0,0,0,.12);
+  padding:12px 16px;
+  border-radius:999px;
 }
 
-/* стрелки */
 .rg-btn{
   position:fixed;
   top:50%;
@@ -248,7 +258,6 @@
     return item.type === "video" ? (item.poster || "") : (item.src || "");
   }
 
-  /* ✅ (3) preload с приоритетами + ✅ (4) try/catch */
   function preload(src, priority){
     if(!src) return Promise.resolve(false);
     if(preloadCache.has(src)) return preloadCache.get(src);
@@ -294,7 +303,7 @@
     imgEl.classList.add("is-loading");
     imgEl.decoding = "async";
     imgEl.loading = "eager";
-    try{ imgEl.fetchPriority = "low"; }catch(e){}  /* ✅ (4) */
+    try{ imgEl.fetchPriority = "low"; }catch(e){}
 
     imgEl.onload = ()=>{ imgEl.classList.remove("is-loading"); setLoading(slot,false); };
     imgEl.onerror= ()=>{ imgEl.classList.remove("is-loading"); setLoading(slot,false); };
@@ -318,21 +327,21 @@
       v.playsInline = true;
       v.preload = "auto";
 
-      v.controls = false;
+      v.controls = false;                          /* ✅ */
+      v.setAttribute("controls", "false");         /* ✅ страховка */
       v.setAttribute("playsinline", "");
       v.setAttribute("webkit-playsinline", "");
       v.setAttribute("controlslist", "nodownload noplaybackrate noremoteplayback");
       v.setAttribute("disablepictureinpicture", "");
+      v.setAttribute("disableRemotePlayback", ""); /* ✅ ещё страховка */
 
       const unmute = document.createElement("div");
-      unmute.className = "rg-unmute";
-      unmute.innerHTML = "<span>tap to sound</span>";
+      unmute.className = "rg-unmute";              /* ✅ как во втором коде */
 
       center.appendChild(v);
       center.appendChild(unmute);
       activeVideo = v;
 
-      /* ✅ (6) снимаем loading по самому раннему событию */
       const hideLoader = ()=>{
         v.classList.remove("is-loading");
         setLoading(center, false);
@@ -342,7 +351,6 @@
       v.addEventListener("canplay", hideLoader, {once:true});
       v.onerror = ()=>{ hideLoader(); };
 
-      /* autoplay СО ЗВУКОМ — НЕ УБИРАЮ */
       const trySound = async ()=>{
         try{
           v.muted = false;
@@ -375,7 +383,7 @@
     img.className = "rg-main is-loading";
     img.decoding = "async";
     img.loading = "eager";
-    try{ img.fetchPriority = "high"; }catch(e){}   /* ✅ (4) */
+    try{ img.fetchPriority = "high"; }catch(e){}
 
     img.onload = ()=>{ img.classList.remove("is-loading"); setLoading(center,false); };
     img.onerror= ()=>{ img.classList.remove("is-loading"); setLoading(center,false); };
@@ -394,12 +402,10 @@
     const p = (i - 1 + elements.length) % elements.length;
     const n = (i + 1) % elements.length;
 
-    /* loading сразу */
     setLoading(left.parentElement, true);
     setLoading(right.parentElement, true);
     setLoading(center, true);
 
-    /* ✅ (3) приоритеты: текущий high, соседи low */
     await Promise.all([
       preload(thumbSrc(elements[i]), "high"),
       preload(thumbSrc(elements[p]), "low"),
@@ -413,7 +419,6 @@
 
     setSidesHidden(!!elements[i].wide && elements[i].type !== "video");
 
-    /* второе кольцо — в фоне */
     const p2 = (p - 1 + elements.length) % elements.length;
     const n2 = (n + 1) % elements.length;
     const bg = ()=>{
@@ -427,7 +432,6 @@
   prevBtn.addEventListener("click", ()=>show(index - 1));
   nextBtn.addEventListener("click", ()=>show(index + 1));
 
-  /* ✅ (5) быстрый старт */
   preload(thumbSrc(elements[0]), "high");
   preload(thumbSrc(elements[1]), "low");
   preload(thumbSrc(elements[2]), "low");
