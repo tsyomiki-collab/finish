@@ -20,11 +20,16 @@
   <button class="rg-btn rg-next" type="button" aria-label="Next">⟩</button>
 </div>
 
-<!-- ✅ (1) ПРОГРЕВ -->
+<!-- ✅ ПРОГРЕВ -->
 <link rel="dns-prefetch" href="//raw.githubusercontent.com">
 <link rel="preconnect" href="https://raw.githubusercontent.com" crossorigin>
 <link rel="dns-prefetch" href="//c.s-microsoft.com">
 <link rel="preconnect" href="https://c.s-microsoft.com" crossorigin>
+
+<!-- ✅ PRELOAD первых кадров (ускоряет первый экран) -->
+<link rel="preload" as="image" href="https://raw.githubusercontent.com/tsyomiki-collab/one-pulse/main/1-3.png">
+<link rel="preload" as="image" href="https://raw.githubusercontent.com/tsyomiki-collab/one-pulse/main/2-3.png">
+<link rel="preload" as="image" href="https://raw.githubusercontent.com/tsyomiki-collab/one-pulse/main/3-3.png">
 
 <style>
 @font-face{
@@ -59,7 +64,7 @@
 }
 
 .rg-sideSlot{
-  position:relative; /* ✅ для лоадинга */
+  position:relative;
   width:360px;
   height:330px;
   display:flex;
@@ -70,7 +75,7 @@
 }
 
 .rg-centerSlot{
-  position:relative; /* ✅ для лоадинга */
+  position:relative;
   width:min(1180px, 70vw);
   height:735px;
   display:flex;
@@ -105,18 +110,35 @@
   font-size:14px;
   letter-spacing:.01em;
   line-height:16px;
-  color:#fff;
-  mix-blend-mode:difference;
-  opacity:.9;
+
   pointer-events:none;
   user-select:none;
   display:none;
+
+  /* ✅ фолбэк: всегда видно */
+  color:#111;
+  mix-blend-mode:normal;
+  opacity:.9;
 }
 .rg-loading.is-on{ display:block; }
 
-/* ✅ (2) PATCH: всегда поверх */
+/* ✅ если поддерживается — включаем difference как у тебя */
+@supports (mix-blend-mode:difference){
+  .rg-loading{
+    color:#fff;
+    mix-blend-mode:difference;
+  }
+}
+
+/* ✅ (PATCH) лоадер всегда поверх */
 #rg-gallery .rg-loading{ z-index:999; }
 
+/* ✅ (PATCH) до старта JS лоадеры видны сразу — больше нет “белого экрана” */
+#rg-gallery:not([data-rg-init="1"]) .rg-loading{
+  display:block !important;
+}
+
+/* пока грузится — прячем контент */
 .rg-side.is-loading,
 .rg-main.is-loading{ opacity:0; }
 
@@ -142,7 +164,6 @@
   -webkit-appearance:none;
   -webkit-tap-highlight-color:transparent;
 }
-
 .rg-btn:focus{ outline:none; }
 .rg-btn:focus-visible{
   outline:2px solid rgba(0,0,0,.25);
@@ -157,7 +178,6 @@
   .rg-centerSlot{ width:92vw; }
 }
 
-/* чуть меньше лагов */
 .rg-centerSlot, .rg-sideSlot { contain: layout paint size; }
 .rg-main { will-change: contents; }
 </style>
@@ -198,7 +218,6 @@
 
   const cache = new Map();
 
-  /* ✅ (3) preload с приоритетом + ✅ (4) try/catch */
   function preload(url, priority){
     if(!url) return Promise.resolve(false);
     if(cache.has(url)) return cache.get(url);
@@ -228,7 +247,7 @@
     imgEl.classList.add("is-loading");
     imgEl.decoding = "async";
     imgEl.loading = "eager";
-    try{ imgEl.fetchPriority = "low"; }catch(e){}   /* ✅ (4) */
+    try{ imgEl.fetchPriority = "low"; }catch(e){}
 
     imgEl.onload = ()=>{ imgEl.classList.remove("is-loading"); setLoading(slot,false); };
     imgEl.onerror= ()=>{ imgEl.classList.remove("is-loading"); setLoading(slot,false); };
@@ -244,7 +263,7 @@
     img.className = "rg-main is-loading";
     img.decoding = "async";
     img.loading = "eager";
-    try{ img.fetchPriority = "high"; }catch(e){}     /* ✅ (4) */
+    try{ img.fetchPriority = "high"; }catch(e){}
 
     img.onload = ()=>{ img.classList.remove("is-loading"); setLoading(center,false); };
     img.onerror= ()=>{ img.classList.remove("is-loading"); setLoading(center,false); };
@@ -263,7 +282,6 @@
     const prev = (i - 1 + elements.length) % elements.length;
     const next = (i + 1) % elements.length;
 
-    // ✅ лоадеры сразу
     setLoading(center, true);
     setLoading(left.parentElement, true);
     setLoading(right.parentElement, true);
@@ -280,10 +298,8 @@
     setSide(right, elements[next].src);
     showCenter(elements[i]);
 
-    // второе кольцо — в фоне
     const prev2 = (prev - 1 + elements.length) % elements.length;
     const next2 = (next + 1) % elements.length;
-
     const bg = ()=>{
       preload(elements[prev2].src, "low");
       preload(elements[next2].src, "low");
@@ -305,7 +321,6 @@
     document.addEventListener("keydown", window.__rgKeyHandler);
   }
 
-  /* ✅ (5) быстрый старт */
   preload(elements[0]?.src, "high");
   preload(elements[1]?.src, "low");
   preload(elements[2]?.src, "low");
