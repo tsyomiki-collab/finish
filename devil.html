@@ -4,6 +4,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 
+<!-- ✅ прогрев доменов (ускоряет) -->
+<link rel="dns-prefetch" href="//raw.githubusercontent.com">
+<link rel="preconnect" href="https://raw.githubusercontent.com" crossorigin>
+<link rel="dns-prefetch" href="//res.cloudinary.com">
+<link rel="preconnect" href="https://res.cloudinary.com" crossorigin>
+
 <style>
 @font-face{
   font-family:"SegoeUI";
@@ -138,6 +144,9 @@
 
 /* если текущая картинка/постер горизонтальные — скрываем боковые */
 #rg-gallery.rg-wide .rg-sideSlot{ display:none; }
+
+/* ✅ PATCH: лоадер всегда поверх всего (чтобы не было белого экрана со стрелками без текста) */
+#rg-gallery .rg-loading{ z-index:999; }
 </style>
 </head>
 
@@ -206,15 +215,35 @@
     if(l) l.classList.toggle("is-on", !!on);
   }
 
+  // ✅ PATCH: AUTO-PRELOAD первых картинок/постера через <link rel="preload"> (ускоряет старт и свайпы)
+  try{
+    const head = document.head || document.getElementsByTagName("head")[0];
+    const urls = [];
+    for(let i=0;i<elements.length && urls.length<8;i++){
+      const u = (elements[i].type === "video") ? (elements[i].poster || "") : (elements[i].src || "");
+      if(u && !urls.includes(u)) urls.push(u);
+    }
+    urls.forEach((href, i)=>{
+      if(document.querySelector(`link[rel="preload"][href="${href}"]`)) return;
+      const link = document.createElement("link");
+      link.rel = "preload";
+      link.as  = "image";
+      link.href = href;
+      try { link.fetchPriority = (i < 2 ? "high" : "low"); } catch(e){}
+      head.appendChild(link);
+    });
+  }catch(e){}
+
   // preload images/posters
   const imgCache = new Map();
-  function preloadImage(url){
+  function preloadImage(url, priority){
     if(!url) return Promise.resolve(false);
     if(imgCache.has(url)) return imgCache.get(url);
 
     const p = new Promise(resolve=>{
       const img = new Image();
       img.decoding = "async";
+      try{ if(priority) img.fetchPriority = priority; }catch(e){}
       img.onload  = () => resolve(true);
       img.onerror = () => resolve(false);
       img.src = url;
@@ -256,7 +285,7 @@
   mainImg.className = "rg-main is-loading";
   mainImg.decoding = "async";
   mainImg.loading = "eager";
-  mainImg.fetchPriority = "high";
+  try{ mainImg.fetchPriority = "high"; }catch(e){}
 
   const posterImg = document.createElement("img");
   posterImg.className = "rg-main";
@@ -271,7 +300,7 @@
   mainVideo.className = "rg-main";
   mainVideo.style.display = "none";
 
-  // важные атрибуты для iOS + без панели
+  /* ⚠️ НЕ ТРОГАЮ autoplay-логику: оставляю как у тебя */
   mainVideo.setAttribute("playsinline","");
   mainVideo.setAttribute("webkit-playsinline","");
   mainVideo.setAttribute("muted","");
@@ -364,7 +393,7 @@
     imgEl.classList.add("is-loading");
     imgEl.decoding = "async";
     imgEl.loading = "eager";
-    imgEl.fetchPriority = "low";
+    try{ imgEl.fetchPriority = "low"; }catch(e){}
 
     imgEl.onload = ()=>{
       imgEl.classList.remove("is-loading");
@@ -399,15 +428,16 @@
     const prev = (i - 1 + elements.length) % elements.length;
     const next = (i + 1) % elements.length;
 
-    // сразу включаем loading
+    // ✅ сразу включаем loading (чтобы не было белого экрана)
     setLoading(center, true);
     setLoading(left.parentElement, true);
     setLoading(right.parentElement, true);
 
+    // ✅ грузим текущую с высоким приоритетом, соседние — низким
     await Promise.all([
-      preloadImage(srcFor(elements[i])),
-      preloadImage(srcFor(elements[prev])),
-      preloadImage(srcFor(elements[next]))
+      preloadImage(srcFor(elements[i]), "high"),
+      preloadImage(srcFor(elements[prev]), "low"),
+      preloadImage(srcFor(elements[next]), "low")
     ]);
     if(t !== token) return;
 
@@ -415,11 +445,11 @@
     setSide(right, elements[next]);
     showCenter(elements[i]);
 
-    // второе кольцо — в фоне
+    // ✅ второе кольцо — в фоне
     const idle = window.requestIdleCallback || (fn=>setTimeout(fn,120));
     idle(()=>{
-      preloadImage(srcFor(elements[(prev - 1 + elements.length) % elements.length]));
-      preloadImage(srcFor(elements[(next + 1) % elements.length]));
+      preloadImage(srcFor(elements[(prev - 1 + elements.length) % elements.length]), "low");
+      preloadImage(srcFor(elements[(next + 1) % elements.length]), "low");
     }, {timeout:600});
 
     // ✅ hide sides если текущий кадр (или его постер) горизонтальный
@@ -440,6 +470,11 @@
     };
     document.addEventListener("keydown", window.__rgKeyHandler);
   }
+
+  // ✅ быстрый старт: прогреваем первые 2-3 сразу (картинки + если есть постер)
+  preloadImage(srcFor(elements[0]), "high");
+  preloadImage(srcFor(elements[1]), "low");
+  preloadImage(srcFor(elements[2]), "low");
 
   show(0);
 })();
