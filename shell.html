@@ -1,4 +1,4 @@
-<div id="rg-gallery">
+ <div id="rg-gallery">
   <button class="rg-btn rg-prev" type="button" aria-label="Previous">⟨</button>
 
   <div class="rg-wrapper">
@@ -19,6 +19,12 @@
 
   <button class="rg-btn rg-next" type="button" aria-label="Next">⟩</button>
 </div>
+
+<!-- ✅ (1) ПРОГРЕВ -->
+<link rel="dns-prefetch" href="//raw.githubusercontent.com">
+<link rel="preconnect" href="https://raw.githubusercontent.com" crossorigin>
+<link rel="dns-prefetch" href="//c.s-microsoft.com">
+<link rel="preconnect" href="https://c.s-microsoft.com" crossorigin>
 
 <style>
 @font-face{
@@ -101,7 +107,7 @@
 
   font-family:"SegoeUI","Segoe UI",-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif;
   font-weight:300;
-  font-size:14px;  /* подобрала */
+  font-size:14px;
   letter-spacing:.01em;
   line-height:16px;
 
@@ -114,6 +120,9 @@
   display:none;
 }
 .rg-loading.is-on{ display:block; }
+
+/* ✅ (2) PATCH: лоадер всегда поверх контента */
+#rg-gallery .rg-loading{ z-index:999; }
 
 /* пока грузится — прячем изображение */
 .rg-side.is-loading,
@@ -194,13 +203,15 @@
 
   const preloadCache = new Map();
 
-  function preload(src){
+  /* ✅ (3) preload с приоритетом + ✅ try/catch для iOS */
+  function preload(src, priority){
     if(!src) return Promise.resolve(false);
     if(preloadCache.has(src)) return preloadCache.get(src);
 
     const p = new Promise(resolve=>{
       const img = new Image();
       img.decoding = "async";
+      try{ if(priority) img.fetchPriority = priority; }catch(e){}
       img.onload  = () => resolve(true);
       img.onerror = () => resolve(false);
       img.src = src;
@@ -231,7 +242,7 @@
     imgEl.classList.add("is-loading");
     imgEl.decoding = "async";
     imgEl.loading = "eager";
-    imgEl.fetchPriority = "low";
+    try{ imgEl.fetchPriority = "low"; }catch(e){}
 
     imgEl.onload = ()=>{ imgEl.classList.remove("is-loading"); setLoading(slot,false); };
     imgEl.onerror= ()=>{ imgEl.classList.remove("is-loading"); setLoading(slot,false); };
@@ -248,7 +259,7 @@
     img.className = "rg-main is-loading";
     img.decoding = "async";
     img.loading = "eager";
-    img.fetchPriority = "high";
+    try{ img.fetchPriority = "high"; }catch(e){}
 
     img.onload = ()=>{ img.classList.remove("is-loading"); setLoading(center,false); };
     img.onerror= ()=>{ img.classList.remove("is-loading"); setLoading(center,false); };
@@ -267,31 +278,49 @@
     const p = (i - 1 + elements.length) % elements.length;
     const n = (i + 1) % elements.length;
 
-    // loading сразу
-    setLoading(left.parentElement, true);
-    setLoading(right.parentElement, true);
-    setLoading(center, true);
+    const hideSides = !!elements[i].wide; /* ✅ (4) */
 
-    await Promise.all([
-      preload(elements[i].src),
-      preload(elements[p].src),
-      preload(elements[n].src)
-    ]);
+    // loading сразу: центр всегда, боковые только если будут видны
+    setLoading(center, true);
+    if(!hideSides){
+      setLoading(left.parentElement, true);
+      setLoading(right.parentElement, true);
+    }else{
+      setLoading(left.parentElement, false);
+      setLoading(right.parentElement, false);
+      left.classList.remove("is-loading");
+      right.classList.remove("is-loading");
+    }
+
+    // ✅ (3)(4) прелоадим текущую high, соседи low (но только если боковые видны)
+    const tasks = [
+      preload(elements[i].src, "high")
+    ];
+    if(!hideSides){
+      tasks.push(
+        preload(elements[p].src, "low"),
+        preload(elements[n].src, "low")
+      );
+    }
+
+    await Promise.all(tasks);
     if(t !== token) return;
 
-    setSide(left,  elements[p]);
-    setSide(right, elements[n]);
+    if(!hideSides){
+      setSide(left,  elements[p]);
+      setSide(right, elements[n]);
+    }
     showCenter(elements[i]);
 
     // правило: если ЦЕНТРАЛЬНАЯ wide:true — скрываем боковые
-    setSidesHidden(!!elements[i].wide);
+    setSidesHidden(hideSides);
 
     // второе кольцо — в фоне
     const p2 = (p - 1 + elements.length) % elements.length;
     const n2 = (n + 1) % elements.length;
     const bg = ()=>{
-      preload(elements[p2].src);
-      preload(elements[n2].src);
+      preload(elements[p2].src, "low");
+      preload(elements[n2].src, "low");
     };
     if("requestIdleCallback" in window) requestIdleCallback(bg, {timeout:600});
     else setTimeout(bg, 0);
@@ -300,7 +329,11 @@
   prevBtn.addEventListener("click", ()=>show(index - 1));
   nextBtn.addEventListener("click", ()=>show(index + 1));
 
+  /* ✅ (5) быстрый старт */
+  preload(elements[0]?.src, "high");
+  preload(elements[1]?.src, "low");
+  preload(elements[2]?.src, "low");
+
   show(0);
 })();
 </script>
-
