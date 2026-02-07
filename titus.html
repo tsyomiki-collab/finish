@@ -20,6 +20,10 @@
   <button class="rg-btn rg-next" type="button" aria-label="Next">⟩</button>
 </div>
 
+<!-- ✅ (1) ПРОГРЕВ -->
+<link rel="dns-prefetch" href="//raw.githubusercontent.com">
+<link rel="preconnect" href="https://raw.githubusercontent.com" crossorigin>
+
 <style>
 @font-face{
   font-family:"SegoeUI";
@@ -117,6 +121,9 @@
 }
 .rg-loading.is-on{ display:block; }
 
+/* ✅ (2) лоадер всегда поверх */
+#rg-gallery .rg-loading{ z-index:999; }
+
 /* пока грузится — скрываем картинку */
 .rg-side.is-loading,
 .rg-main.is-loading{ opacity:0; }
@@ -197,13 +204,15 @@
   const preloadCache = new Map();
   const isWideCache  = new Map();
 
-  function preload(src){
+  /* ✅ (3) preload с приоритетом */
+  function preload(src, priority){
     if(!src) return Promise.resolve(false);
     if(preloadCache.has(src)) return preloadCache.get(src);
 
     const p = new Promise(resolve=>{
       const img = new Image();
       img.decoding = "async";
+      try{ if(priority) img.fetchPriority = priority; }catch(e){}
       img.onload  = () => resolve(true);
       img.onerror = () => resolve(false);
       img.src = src;
@@ -214,6 +223,7 @@
   }
 
   function getIsWide(src){
+    if(!src) return Promise.resolve(false);
     if(isWideCache.has(src)) return Promise.resolve(isWideCache.get(src));
     return new Promise(resolve=>{
       const img = new Image();
@@ -243,7 +253,7 @@
     imgEl.classList.add("is-loading");
     imgEl.decoding = "async";
     imgEl.loading = "eager";
-    imgEl.fetchPriority = "low";
+    try{ imgEl.fetchPriority = "low"; }catch(e){}
 
     imgEl.onload = ()=>{ imgEl.classList.remove("is-loading"); setLoading(slot,false); };
     imgEl.onerror= ()=>{ imgEl.classList.remove("is-loading"); setLoading(slot,false); };
@@ -256,7 +266,7 @@
   }
 
   function showCenter(el){
-    // ✅ центр всегда имеет только ОДИН loader (внутри #rg-center)
+    // ✅ центр всегда имеет только ОДИН loader
     setLoading(center, true);
     center.innerHTML = '<span class="rg-loading is-on" aria-hidden="true">loading...</span>';
 
@@ -264,7 +274,7 @@
     img.className = "rg-main is-loading";
     img.decoding = "async";
     img.loading = "eager";
-    img.fetchPriority = "high";
+    try{ img.fetchPriority = "high"; }catch(e){}
 
     img.onload = ()=>{ img.classList.remove("is-loading"); setLoading(center,false); };
     img.onerror= ()=>{ img.classList.remove("is-loading"); setLoading(center,false); };
@@ -283,37 +293,49 @@
     const p = (i - 1 + elements.length) % elements.length;
     const n = (i + 1) % elements.length;
 
-    // показываем loader заранее
-    setLoading(center, true);
-    setLoading(left.parentElement, true);
-    setLoading(right.parentElement, true);
-
-    await Promise.all([
-      preload(elements[i].src),
-      preload(elements[p].src),
-      preload(elements[n].src)
-    ]);
-    if(t !== token) return;
-
-    setSide(left,  elements[p].src);
-    setSide(right, elements[n].src);
-
-    markSide(left, p);
-    markSide(right, n);
-
-    showCenter(elements[i]);
-
-    // ✅ если центр горизонтальный — скрываем слоты целиком (иначе их loader “лезет” в центр)
+    /* ✅ (4) сначала решаем wideCenter, чтобы боковые не мигали лоадером */
     const hideSlots = await getIsWide(elements[i].src);
     if(t !== token) return;
     gallery.classList.toggle("rg-wideCenter", hideSlots);
+
+    // лоадер центра всегда
+    setLoading(center, true);
+
+    // боковые лоадеры включаем только если они реально будут видны
+    if(!hideSlots){
+      setLoading(left.parentElement, true);
+      setLoading(right.parentElement, true);
+    }else{
+      setLoading(left.parentElement, false);
+      setLoading(right.parentElement, false);
+      left.classList.remove("is-loading");
+      right.classList.remove("is-loading");
+    }
+
+    // ✅ (3) current high, neighbors low только если слоты видимы
+    const tasks = [preload(elements[i].src, "high")];
+    if(!hideSlots){
+      tasks.push(preload(elements[p].src, "low"), preload(elements[n].src, "low"));
+    }
+
+    await Promise.all(tasks);
+    if(t !== token) return;
+
+    if(!hideSlots){
+      setSide(left,  elements[p].src);
+      setSide(right, elements[n].src);
+      markSide(left, p);
+      markSide(right, n);
+    }
+
+    showCenter(elements[i]);
 
     // второе кольцо — в фоне
     const p2 = (p - 1 + elements.length) % elements.length;
     const n2 = (n + 1) % elements.length;
     const bg = ()=>{
-      preload(elements[p2].src);
-      preload(elements[n2].src);
+      preload(elements[p2].src, "low");
+      preload(elements[n2].src, "low");
     };
     if("requestIdleCallback" in window) requestIdleCallback(bg, {timeout:600});
     else setTimeout(bg, 0);
@@ -331,6 +353,11 @@
     };
     document.addEventListener("keydown", window.__rgKeyHandler);
   }
+
+  /* ✅ (5) быстрый старт */
+  preload(elements[0]?.src, "high");
+  preload(elements[1]?.src, "low");
+  preload(elements[2]?.src, "low");
 
   show(0);
 })();
