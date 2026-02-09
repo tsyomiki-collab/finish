@@ -1,3 +1,7 @@
+добавь прозрачную кнопку без панели по всей площади видео
+если юзер выходит со страницы звук убирается
+понял?
+
 <div id="rg-gallery">
   <button class="rg-btn rg-prev" type="button" aria-label="Previous">⟨</button>
 
@@ -9,9 +13,6 @@
 
     <div id="rg-center" class="rg-centerSlot">
       <span class="rg-loading is-on" aria-hidden="true">loading...</span>
-
-      <!-- ✅ ДОБАВЛЕНО: прозрачная кнопка-пауза поверх видео (без панели/иконки) -->
-      <button class="rg-pauseHit" type="button" aria-label="Toggle pause"></button>
     </div>
 
     <div class="rg-sideSlot">
@@ -111,8 +112,6 @@
   display:block;
   object-fit:contain;
   background:transparent;
-
-  /* ✅ как было: само видео не кликается */
   pointer-events:none;
 }
 
@@ -206,24 +205,6 @@
   pointer-events:auto;
 }
 
-/* ✅ ДОБАВЛЕНО: прозрачная кнопка паузы поверх всего центра (только на видео) */
-.rg-pauseHit{
-  position:absolute;
-  inset:0;
-  z-index:4;              /* ниже unmute(5), выше видео/постера */
-  display:none;           /* включаем только когда в центре видео */
-  background:transparent;
-  border:0;
-  padding:0;
-  margin:0;
-  cursor:pointer;
-  pointer-events:auto;
-  -webkit-tap-highlight-color:transparent;
-}
-
-/* включаем только когда JS ставит класс */
-#rg-center.has-video .rg-pauseHit{ display:block; }
-
 .rg-btn{
   position:fixed;
   top:50%;
@@ -292,9 +273,6 @@
   const nextBtn = gallery.querySelector(".rg-next");
   if(!left || !right || !center || !prevBtn || !nextBtn) return;
 
-  const pauseHit = center.querySelector(".rg-pauseHit"); /* ✅ ДОБАВЛЕНО */
-  if(!pauseHit) return;
-
   const imgCache = new Map();
   let activeVideo = null;
 
@@ -324,28 +302,20 @@
     if(l) l.classList.toggle("is-on", !!on);
   }
 
-  // ✅ ДОБАВЛЕНО: флаг видео для показа pauseHit
-  function setHasVideo(on){
-    center.classList.toggle("has-video", !!on);
-    pauseHit.style.display = on ? "block" : "none";
-  }
-
   function stopVideo(){
     if(!activeVideo) return;
     try{ activeVideo.pause(); }catch(e){}
     try{ activeVideo.muted = true; activeVideo.volume = 0; }catch(e){}
     try{ activeVideo.removeAttribute("src"); activeVideo.load?.(); }catch(e){}
     activeVideo = null;
-    setHasVideo(false);
   }
 
-  // ✅ когда юзер уходит/сворачивает — звук пропадает
+  // ✅ ДОБАВЛЕНО: когда юзер уходит/сворачивает — звук пропадает
   function stopAllVideosNow(){
     if(activeVideo){
       try{ activeVideo.pause(); }catch(e){}
       try{ activeVideo.muted = true; activeVideo.volume = 0; }catch(e){}
     }
-    setHasVideo(!!activeVideo);
   }
 
   function markSide(imgEl, item){
@@ -368,42 +338,11 @@
     markSide(imgEl, item);
   }
 
-  // ✅ ДОБАВЛЕНО: прозрачная пауза/плей (без иконки)
-  pauseHit.addEventListener("click", (e)=>{
-    e.preventDefault();
-    const v = activeVideo;
-    if(!v) return;
-
-    if(v.paused){
-      const p = v.play();
-      if(p && typeof p.catch === "function") p.catch(()=>{});
-    }else{
-      try{ v.pause(); }catch(err){}
-      try{ v.muted = true; v.volume = 0; }catch(err){}
-    }
-  });
-
   function showCenter(item){
     stopVideo();
 
     setLoading(center, true);
-    // ✅ сохраняем pauseHit в разметке центра
-    center.innerHTML = '<span class="rg-loading is-on" aria-hidden="true">loading...</span><button class="rg-pauseHit" type="button" aria-label="Toggle pause"></button>';
-    // пере-берём pauseHit после перерендера
-    const _pause = center.querySelector(".rg-pauseHit");
-    // переподключим обработчик (без дублей)
-    _pause.addEventListener("click", (e)=>{
-      e.preventDefault();
-      const v = activeVideo;
-      if(!v) return;
-      if(v.paused){
-        const p = v.play();
-        if(p && typeof p.catch === "function") p.catch(()=>{});
-      }else{
-        try{ v.pause(); }catch(err){}
-        try{ v.muted = true; v.volume = 0; }catch(err){}
-      }
-    });
+    center.innerHTML = '<span class="rg-loading is-on" aria-hidden="true">loading...</span>';
 
     if(item.type === "video"){
       const v = document.createElement("video");
@@ -434,8 +373,6 @@
       center.appendChild(posterOverlay);
       center.appendChild(unmute);
       activeVideo = v;
-
-      setHasVideo(true); /* ✅ показать прозрачную кнопку */
 
       const hideLoader = ()=>{
         v.classList.remove("is-loading");
@@ -482,8 +419,6 @@
 
       return;
     }
-
-    setHasVideo(false);
 
     const img = document.createElement("img");
     img.className = "rg-main is-loading";
@@ -554,7 +489,7 @@
   preloadImg(thumbSrc(elements[1]), "low");
   preloadImg(thumbSrc(elements[elements.length-1]), "low");
 
-  // ✅ уход/сворачивание/переключение — сразу mute+pause
+  // ✅ ДОБАВЛЕНО: уход/сворачивание/переключение — сразу mute+pause
   document.addEventListener("visibilitychange", ()=>{
     if(document.hidden) stopAllVideosNow();
   });
