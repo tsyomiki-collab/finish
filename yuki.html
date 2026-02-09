@@ -10,7 +10,7 @@
     <div id="rg-center" class="rg-centerSlot">
       <span class="rg-loading is-on" aria-hidden="true">loading...</span>
 
-      <!-- ✅ ДОБАВЛЕНО: прозрачная кнопка-пауза поверх видео (без панели/иконки) -->
+      <!-- ✅ прозрачная кнопка-пауза поверх видео (без панели/иконки) -->
       <button class="rg-pauseHit" type="button" aria-label="Toggle pause"></button>
     </div>
 
@@ -112,7 +112,7 @@
   object-fit:contain;
   background:transparent;
 
-  /* ✅ как было: само видео не кликается */
+  /* как было: само видео не кликается */
   pointer-events:none;
 }
 
@@ -206,12 +206,12 @@
   pointer-events:auto;
 }
 
-/* ✅ ДОБАВЛЕНО: прозрачная кнопка паузы поверх всего центра (только на видео) */
+/* ✅ прозрачная кнопка паузы поверх всего центра (только на видео) */
 .rg-pauseHit{
   position:absolute;
   inset:0;
   z-index:4;              /* ниже unmute(5), выше видео/постера */
-  display:none;           /* включаем только когда в центре видео */
+  display:none;
   background:transparent;
   border:0;
   padding:0;
@@ -220,8 +220,6 @@
   pointer-events:auto;
   -webkit-tap-highlight-color:transparent;
 }
-
-/* включаем только когда JS ставит класс */
 #rg-center.has-video .rg-pauseHit{ display:block; }
 
 .rg-btn{
@@ -292,11 +290,12 @@
   const nextBtn = gallery.querySelector(".rg-next");
   if(!left || !right || !center || !prevBtn || !nextBtn) return;
 
-  const pauseHit = center.querySelector(".rg-pauseHit"); /* ✅ ДОБАВЛЕНО */
+  const pauseHit = center.querySelector(".rg-pauseHit");
   if(!pauseHit) return;
 
   const imgCache = new Map();
   let activeVideo = null;
+  let soundUnlocked = false;
 
   function thumbSrc(item){
     return item.type === "video" ? (item.poster || "") : (item.src || "");
@@ -324,30 +323,6 @@
     if(l) l.classList.toggle("is-on", !!on);
   }
 
-  // ✅ ДОБАВЛЕНО: флаг видео для показа pauseHit
-  function setHasVideo(on){
-    center.classList.toggle("has-video", !!on);
-    pauseHit.style.display = on ? "block" : "none";
-  }
-
-  function stopVideo(){
-    if(!activeVideo) return;
-    try{ activeVideo.pause(); }catch(e){}
-    try{ activeVideo.muted = true; activeVideo.volume = 0; }catch(e){}
-    try{ activeVideo.removeAttribute("src"); activeVideo.load?.(); }catch(e){}
-    activeVideo = null;
-    setHasVideo(false);
-  }
-
-  // ✅ когда юзер уходит/сворачивает — звук пропадает
-  function stopAllVideosNow(){
-    if(activeVideo){
-      try{ activeVideo.pause(); }catch(e){}
-      try{ activeVideo.muted = true; activeVideo.volume = 0; }catch(e){}
-    }
-    setHasVideo(!!activeVideo);
-  }
-
   function markSide(imgEl, item){
     imgEl.classList.toggle("rg-wide", !!(item && item.wide));
   }
@@ -368,42 +343,96 @@
     markSide(imgEl, item);
   }
 
-  // ✅ ДОБАВЛЕНО: прозрачная пауза/плей (без иконки)
-  pauseHit.addEventListener("click", (e)=>{
-    e.preventDefault();
-    const v = activeVideo;
-    if(!v) return;
+  function setHasVideo(on){
+    center.classList.toggle("has-video", !!on);
+  }
 
-    if(v.paused){
-      const p = v.play();
-      if(p && typeof p.catch === "function") p.catch(()=>{});
+  // ✅ как в “железном” варианте: если tap-for-sound на экране — пауза выключена
+  function setNeedsTap(on){
+    pauseHit.style.pointerEvents = on ? "none" : "auto";
+  }
+
+  function silenceNow(){
+    if(!activeVideo) return;
+    try{ activeVideo.pause(); }catch(e){}
+    try{ activeVideo.muted = true; activeVideo.volume = 0; }catch(e){}
+  }
+
+  function stopVideo(){
+    if(!activeVideo) { setHasVideo(false); return; }
+    silenceNow();
+    try{ activeVideo.removeAttribute("src"); activeVideo.load?.(); }catch(e){}
+    activeVideo = null;
+    setHasVideo(false);
+  }
+
+  async function tryPlayWithSound(v){
+    try{
+      v.muted = false;
+      v.volume = 1;
+      await v.play();
+      return true;
+    }catch(e){}
+    return false;
+  }
+
+  async function startVideoSmart(v, unmuteEl){
+    // сначала пробуем со звуком
+    if(soundUnlocked){
+      if(await tryPlayWithSound(v)){
+        if(unmuteEl) unmuteEl.classList.remove("is-on");
+        setNeedsTap(false);
+        return true;
+      }
     }else{
-      try{ v.pause(); }catch(err){}
-      try{ v.muted = true; v.volume = 0; }catch(err){}
+      if(await tryPlayWithSound(v)){
+        soundUnlocked = true;
+        if(unmuteEl) unmuteEl.classList.remove("is-on");
+        setNeedsTap(false);
+        return true;
+      }
     }
-  });
+
+    // fallback: muted autoplay + показываем tap
+    try{
+      v.muted = true;
+      v.volume = 0;
+      await v.play();
+    }catch(_){}
+
+    if(unmuteEl) unmuteEl.classList.add("is-on");
+    setNeedsTap(true);
+    return false;
+  }
 
   function showCenter(item){
     stopVideo();
-
     setLoading(center, true);
-    // ✅ сохраняем pauseHit в разметке центра
+
+    // ✅ НЕ пересоздаём pauseHit (иначе теряем ссылки/слушатели)
     center.innerHTML = '<span class="rg-loading is-on" aria-hidden="true">loading...</span><button class="rg-pauseHit" type="button" aria-label="Toggle pause"></button>';
-    // пере-берём pauseHit после перерендера
-    const _pause = center.querySelector(".rg-pauseHit");
-    // переподключим обработчик (без дублей)
-    _pause.addEventListener("click", (e)=>{
-      e.preventDefault();
-      const v = activeVideo;
-      if(!v) return;
-      if(v.paused){
-        const p = v.play();
-        if(p && typeof p.catch === "function") p.catch(()=>{});
-      }else{
-        try{ v.pause(); }catch(err){}
-        try{ v.muted = true; v.volume = 0; }catch(err){}
-      }
-    });
+    const pause = center.querySelector(".rg-pauseHit");
+
+    // ✅ навешиваем обработчик 1 раз (через dataset)
+    if(pause && pause.dataset.bound !== "1"){
+      pause.dataset.bound = "1";
+      pause.addEventListener("click", async (e)=>{
+        e.preventDefault();
+        const v = activeVideo;
+        if(!v) return;
+
+        // если tap-for-sound на экране — пауза не работает
+        if(pause.style.pointerEvents === "none") return;
+
+        if(v.paused){
+          const unmuteEl = center.querySelector(".rg-unmute");
+          await startVideoSmart(v, unmuteEl);
+        }else{
+          try{ v.pause(); }catch(err){}
+          try{ v.muted = true; v.volume = 0; }catch(err){}
+        }
+      });
+    }
 
     if(item.type === "video"){
       const v = document.createElement("video");
@@ -421,6 +450,7 @@
       v.setAttribute("webkit-playsinline", "");
       v.setAttribute("controlslist", "nodownload noplaybackrate noremoteplayback");
       v.setAttribute("disablepictureinpicture", "");
+      v.setAttribute("disableRemotePlayback", "");
 
       const posterOverlay = document.createElement("img");
       posterOverlay.className = "rg-posterOverlay is-on";
@@ -433,9 +463,9 @@
       center.appendChild(v);
       center.appendChild(posterOverlay);
       center.appendChild(unmute);
-      activeVideo = v;
 
-      setHasVideo(true); /* ✅ показать прозрачную кнопку */
+      activeVideo = v;
+      setHasVideo(true);
 
       const hideLoader = ()=>{
         v.classList.remove("is-loading");
@@ -451,32 +481,25 @@
       v.addEventListener("canplay", hideLoader, {once:true});
       v.onerror = ()=>{ hideLoader(); posterOverlay.classList.add("is-on"); };
 
-      const showOverlay = ()=>unmute.classList.add("is-on");
-      const hideOverlay = ()=>unmute.classList.remove("is-on");
+      // ✅ autoplay smart (как в предыдущем “железном” варианте)
+      startVideoSmart(v, unmute);
 
-      (async ()=>{
+      // ✅ tap for sound: не должен дать “прыжок”/случайные клики
+      unmute.addEventListener("click", async (e)=>{
+        e.preventDefault();
+        e.stopPropagation();
+        if(e.stopImmediatePropagation) e.stopImmediatePropagation();
+
+        soundUnlocked = true;
         try{
           v.muted = false;
           v.volume = 1;
           await v.play();
-          hideOverlay();
-        }catch(e){
-          try{
-            v.muted = true;
-            await v.play();
-          }catch(_){}
-          showOverlay();
-        }
-      })();
-
-      unmute.addEventListener("click", async ()=>{
-        try{
-          v.muted = false;
-          v.volume = 1;
-          await v.play();
-          hideOverlay();
-        }catch(e){
-          showOverlay();
+          unmute.classList.remove("is-on");
+          setNeedsTap(false);
+        }catch(e2){
+          unmute.classList.add("is-on");
+          setNeedsTap(true);
         }
       });
 
@@ -524,7 +547,10 @@
 
     const tasks = [preloadImg(thumbSrc(elements[i]), "high")];
     if(!wideCenter){
-      tasks.push(preloadImg(thumbSrc(elements[p]), "low"), preloadImg(thumbSrc(elements[n]), "low"));
+      tasks.push(
+        preloadImg(thumbSrc(elements[p]), "low"),
+        preloadImg(thumbSrc(elements[n]), "low")
+      );
     }
 
     await Promise.all(tasks);
@@ -550,17 +576,45 @@
   prevBtn.onclick = ()=>show(index - 1);
   nextBtn.onclick = ()=>show(index + 1);
 
+  // ✅ железный свайп: только если реально был горизонтальный MOVE (не тап)
+  let sx=0, sy=0, dx=0, dy=0, moved=false;
+
+  gallery.addEventListener("touchstart", (e)=>{
+    const t = e.touches[0];
+    sx = t.clientX; sy = t.clientY;
+    dx = 0; dy = 0;
+    moved = false;
+  }, {passive:true});
+
+  gallery.addEventListener("touchmove", (e)=>{
+    const t = e.touches[0];
+    dx = t.clientX - sx;
+    dy = t.clientY - sy;
+    if(Math.abs(dx) > 10 || Math.abs(dy) > 10) moved = true;
+  }, {passive:true});
+
+  gallery.addEventListener("touchend", (e)=>{
+    if(!moved) return;
+    if(Math.abs(dx) <= Math.abs(dy)) return;
+    if(Math.abs(dx) < 70) return;
+    dx < 0 ? show(index+1) : show(index-1);
+  }, {passive:true});
+
   preloadImg(thumbSrc(elements[0]), "high");
   preloadImg(thumbSrc(elements[1]), "low");
   preloadImg(thumbSrc(elements[elements.length-1]), "low");
 
   // ✅ уход/сворачивание/переключение — сразу mute+pause
   document.addEventListener("visibilitychange", ()=>{
-    if(document.hidden) stopAllVideosNow();
+    if(document.hidden) silenceNow();
+    else if(activeVideo){
+      const unmuteEl = center.querySelector(".rg-unmute");
+      if(unmuteEl) startVideoSmart(activeVideo, unmuteEl);
+    }
   });
-  window.addEventListener("pagehide", stopAllVideosNow, {capture:true});
-  window.addEventListener("beforeunload", stopAllVideosNow, {capture:true});
-  window.addEventListener("blur", ()=>{ if(document.hidden) return; stopAllVideosNow(); }, {capture:true});
+  window.addEventListener("pagehide", silenceNow, {capture:true});
+  window.addEventListener("beforeunload", silenceNow, {capture:true});
+  window.addEventListener("blur", ()=>{ if(document.hidden) return; silenceNow(); }, {capture:true});
 
   show(0);
 })();
