@@ -109,9 +109,12 @@
   display:block;
   object-fit:contain;
   background:transparent;
+
+  /* важно: само видео не кликается */
+  pointer-events:none;
 }
 
-/* ✅ УБИРАЕМ НАТИВНЫЕ КНОПКИ/ПАНЕЛИ (iOS/Safari) */
+/* убираем нативные контролы */
 .rg-video::-webkit-media-controls,
 .rg-video::-webkit-media-controls-panel,
 .rg-video::-webkit-media-controls-play-button,
@@ -125,9 +128,8 @@
   display:none !important;
   -webkit-appearance:none !important;
 }
-.rg-video{ pointer-events:none; }    /* видео не кликаем */
-.rg-unmute{ pointer-events:auto; }   /* но tap-for-sound кликаем */
 
+/* loading... */
 .rg-loading{
   position:absolute;
   left:50%;
@@ -144,9 +146,9 @@
   pointer-events:none;
   user-select:none;
   display:none;
+  z-index:999;
 }
 .rg-loading.is-on{ display:block; }
-#rg-gallery .rg-loading{ z-index:999; }
 
 .rg-side.is-loading,
 .rg-main.is-loading,
@@ -163,9 +165,9 @@
   cursor:pointer;
   user-select:none;
   -webkit-tap-highlight-color:transparent;
+  pointer-events:auto;
 }
 .rg-unmute.is-on{ display:block; }
-
 .rg-unmute::after{
   content:"tap for sound";
   font-family:"SegoeUI","Segoe UI",-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif;
@@ -218,11 +220,6 @@
   -webkit-appearance:none;
   -webkit-tap-highlight-color:transparent;
 }
-.rg-btn:focus{ outline:none; }
-.rg-btn:focus-visible{
-  outline:2px solid rgba(0,0,0,.25);
-  outline-offset:3px;
-}
 .rg-prev{ left:80px; }
 .rg-next{ right:80px; }
 
@@ -266,13 +263,12 @@
   const center  = document.getElementById("rg-center");
   const prevBtn = gallery.querySelector(".rg-prev");
   const nextBtn = gallery.querySelector(".rg-next");
-  if(!left || !right || !center || !prevBtn || !nextBtn) return;
+  const pauseHit = center.querySelector(".rg-pauseHit");
+  if(!left || !right || !center || !prevBtn || !nextBtn || !pauseHit) return;
 
   const preloadCache = new Map();
   let activeVideo = null;
   let soundUnlocked = false;
-
-  const pauseHit = center.querySelector(".rg-pauseHit");
 
   function thumbSrc(item){
     if(!item) return "";
@@ -310,22 +306,6 @@
     imgEl.classList.toggle("rg-wide", !!(item && item.wide));
   }
 
-  function stopVideo(){
-    if(!activeVideo) return;
-    try{ activeVideo.pause(); }catch(e){}
-    try{ activeVideo.muted = true; activeVideo.volume = 0; }catch(e){}
-    try{ activeVideo.removeAttribute("src"); activeVideo.load?.(); }catch(e){}
-    activeVideo = null;
-    center.classList.remove("has-video");
-  }
-
-  /* ✅ звук пропадает когда юзер уходит/сворачивает */
-  function silenceNow(){
-    if(!activeVideo) return;
-    try{ activeVideo.pause(); }catch(e){}
-    try{ activeVideo.muted = true; activeVideo.volume = 0; }catch(e){}
-  }
-
   function setSide(imgEl, item){
     const slot = imgEl.parentElement;
     setLoading(slot, true);
@@ -342,6 +322,30 @@
     markSide(imgEl, item);
   }
 
+  function setHasVideo(on){
+    center.classList.toggle("has-video", !!on);
+  }
+
+  // ✅ как во 2-м коде: пока нужен tap-for-sound — пауза выключена
+  function setNeedsTap(on){
+    pauseHit.style.pointerEvents = on ? "none" : "auto";
+  }
+
+  // ✅ звук пропадает когда юзер уходит/сворачивает
+  function silenceNow(){
+    if(!activeVideo) return;
+    try{ activeVideo.pause(); }catch(e){}
+    try{ activeVideo.muted = true; activeVideo.volume = 0; }catch(e){}
+  }
+
+  function stopVideo(){
+    if(!activeVideo) { setHasVideo(false); return; }
+    silenceNow();
+    try{ activeVideo.removeAttribute("src"); activeVideo.load?.(); }catch(e){}
+    activeVideo = null;
+    setHasVideo(false);
+  }
+
   async function tryPlayWithSound(v){
     try{
       v.muted = false;
@@ -353,20 +357,23 @@
   }
 
   async function startVideoSmart(v, unmuteEl){
+    // 1) пытаемся со звуком
     if(soundUnlocked){
       if(await tryPlayWithSound(v)){
         if(unmuteEl) unmuteEl.classList.remove("is-on");
+        setNeedsTap(false);
         return true;
       }
     }else{
       if(await tryPlayWithSound(v)){
         soundUnlocked = true;
         if(unmuteEl) unmuteEl.classList.remove("is-on");
+        setNeedsTap(false);
         return true;
       }
     }
 
-    // fallback muted autoplay
+    // 2) fallback: muted autoplay + показываем tap
     try{
       v.muted = true;
       v.volume = 0;
@@ -374,18 +381,26 @@
     }catch(_){}
 
     if(unmuteEl) unmuteEl.classList.add("is-on");
+    setNeedsTap(true);
     return false;
+  }
+
+  function clearCenterKeepUI(){
+    const loading = center.querySelector(".rg-loading");
+    const pause = center.querySelector(".rg-pauseHit");
+    center.innerHTML = "";
+    if(loading) center.appendChild(loading);
+    if(pause) center.appendChild(pause);
   }
 
   function showCenter(item){
     stopVideo();
+    setHasVideo(false);
+    setNeedsTap(false);
 
-    // сохраняем overlay кнопку в DOM
-    center.innerHTML =
-      '<span class="rg-loading is-on" aria-hidden="true">loading...</span>' +
-      '<button class="rg-pauseHit" type="button" aria-label="Toggle pause"></button>';
-
-    const _pauseHit = center.querySelector(".rg-pauseHit");
+    // ✅ НЕ пересоздаём pauseHit — он остаётся тем же элементом
+    clearCenterKeepUI();
+    setLoading(center, true);
 
     if(item.type === "video"){
       const v = document.createElement("video");
@@ -397,8 +412,8 @@
       v.loop = true;
       v.playsInline = true;
       v.preload = "auto";
-
       v.controls = false;
+
       v.setAttribute("playsinline", "");
       v.setAttribute("webkit-playsinline", "");
       v.setAttribute("controlslist", "nodownload noplaybackrate noremoteplayback");
@@ -412,7 +427,7 @@
       center.appendChild(unmute);
 
       activeVideo = v;
-      center.classList.add("has-video");
+      setHasVideo(true);
 
       const hideLoader = ()=>{
         v.classList.remove("is-loading");
@@ -423,21 +438,7 @@
       v.addEventListener("canplay", hideLoader, {once:true});
       v.onerror = hideLoader;
 
-      // ✅ прозрачная пауза: toggle pause/play
-      _pauseHit.addEventListener("click", async (e)=>{
-        e.preventDefault();
-        const vid = activeVideo;
-        if(!vid) return;
-
-        if(vid.paused){
-          await startVideoSmart(vid, unmute);
-        }else{
-          try{ vid.pause(); }catch(err){}
-          try{ vid.muted = true; vid.volume = 0; }catch(err){}
-        }
-      });
-
-      // tap for sound
+      // ✅ tap for sound (как во 2-м коде): кликом только разлочиваем звук и не даём событию “протечь”
       unmute.addEventListener("click", async (e)=>{
         e.preventDefault();
         e.stopPropagation();
@@ -449,16 +450,16 @@
           v.volume = 1;
           await v.play();
           unmute.classList.remove("is-on");
-        }catch(e2){
+          setNeedsTap(false);
+        }catch(_){
           unmute.classList.add("is-on");
+          setNeedsTap(true);
         }
       });
 
       startVideoSmart(v, unmute);
       return;
     }
-
-    center.classList.remove("has-video");
 
     const img = document.createElement("img");
     img.className = "rg-main is-loading";
@@ -472,6 +473,24 @@
     img.src = item.src;
     center.appendChild(img);
   }
+
+  // ✅ невидимая пауза: toggle pause/play (как во 2-м коде)
+  pauseHit.addEventListener("click", async (e)=>{
+    e.preventDefault();
+    const v = activeVideo;
+    if(!v) return;
+
+    // если сейчас нужен tap-for-sound — пауза выключена
+    if(pauseHit.style.pointerEvents === "none") return;
+
+    if(v.paused){
+      const unmuteEl = center.querySelector(".rg-unmute");
+      await startVideoSmart(v, unmuteEl);
+    }else{
+      try{ v.pause(); }catch(_){}
+      try{ v.muted = true; v.volume = 0; }catch(_){}
+    }
+  });
 
   async function show(i){
     const t = ++token;
@@ -521,7 +540,7 @@
     if(Math.abs(dx) > 40) dx < 0 ? show(index+1) : show(index-1);
   }, {passive:true});
 
-  // ✅ уход/сворачивание/выход — сразу mute+pause
+  // ✅ уход/сворачивание/выход — сразу mute+pause (как во 2-м коде)
   document.addEventListener("visibilitychange", ()=>{
     if(document.hidden) silenceNow();
     else if(activeVideo){
