@@ -21,7 +21,6 @@
   <button class="rg-btn rg-next" type="button">⟩</button>
 </div>
 
-<!-- ✅ прогрев доменов (ускоряет) -->
 <link rel="dns-prefetch" href="//raw.githubusercontent.com">
 <link rel="preconnect" href="https://raw.githubusercontent.com" crossorigin>
 <link rel="dns-prefetch" href="//res.cloudinary.com">
@@ -37,7 +36,6 @@
   background:#fcfcfc;
   z-index:9999;
 }
-
 .rg-wrapper{
   display:flex;
   align-items:center;
@@ -46,7 +44,6 @@
   padding:0 110px;
   box-sizing:border-box;
 }
-
 .rg-sideSlot{
   position:relative;
   width:360px;
@@ -57,7 +54,6 @@
   overflow:hidden;
   margin:0 -290px;
 }
-
 .rg-centerSlot{
   position:relative;
   width:min(1180px, 70vw);
@@ -67,14 +63,12 @@
   justify-content:center;
   overflow:hidden;
 }
-
 .rg-main{
   width:100%;
   height:100%;
   object-fit:contain;
   display:block;
 }
-
 .rg-side{
   width:100%;
   height:100%;
@@ -82,7 +76,6 @@
   opacity:.8;
   display:block;
 }
-
 .rg-btn{
   position:fixed;
   top:50%;
@@ -105,14 +98,12 @@
   -webkit-appearance:none;
   -webkit-tap-highlight-color:transparent;
 }
-
 .rg-btn:focus{ outline:none; }
 .rg-btn:focus-visible{
   outline:2px solid rgba(0,0,0,.25);
   outline-offset:3px;
 }
 .rg-btn:active{ transform:translateY(-50%); }
-
 .rg-prev{ left:80px; }
 .rg-next{ right:80px; }
 
@@ -125,7 +116,7 @@
 .rg-centerSlot, .rg-sideSlot { contain: layout paint size; }
 .rg-main { will-change: contents; }
 
-/* ✅ если текущий элемент горизонтальный — боковых НЕТ */
+/* wide */
 #rg-gallery.rg-wide .rg-sideSlot{ display:none; }
 
 /* loading... */
@@ -139,25 +130,21 @@
   font-size:13px;
   letter-spacing:.01em;
   line-height:16px;
-
   color:#fff;
   mix-blend-mode:difference;
   opacity:.9;
-
   pointer-events:none;
   user-select:none;
   display:none;
 }
 .rg-loading.is-on{ display:block; }
 
-/* ✅ главное: когда медиа грузится — прячем его, а лоадер сверху */
 .rg-side.is-loading,
 .rg-main.is-loading{ opacity:0; }
 
-/* ✅ PATCH: лоадер всегда поверх */
 #rg-gallery .rg-loading{ z-index:999; }
 
-/* подсказка для звука */
+/* sound hint */
 .rg-soundHint{
   position:absolute;
   left:50%;
@@ -179,26 +166,40 @@
 }
 #rg-gallery.rg-needsTap .rg-soundHint{ display:block; }
 
-/* ✅ иконка паузы по центру (появляется только когда paused) */
+/* ✅ Apple-like pause icon: circle + two bars (only when paused) */
 .rg-pauseIcon{
   position:absolute;
   left:50%;
   top:50%;
   transform:translate(-50%,-50%);
-  font-family:"SegoeUI","Segoe UI",-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif;
-  font-weight:300;
-  font-size:32px;
-  line-height:1;
-  letter-spacing:.01em;
-  color:#fff;
-  mix-blend-mode:difference;
-  opacity:.92;
-  user-select:none;
-  pointer-events:none;
+  width:52px;
+  height:52px;
+  border-radius:999px;
   display:none;
   z-index:998;
+  pointer-events:none;
+  user-select:none;
+
+  border:1px solid rgba(0,0,0,.14);
+  background:rgba(255,255,255,.02);
+  mix-blend-mode:difference;
 }
 .rg-pauseIcon.is-on{ display:block; }
+
+.rg-pauseIcon::before,
+.rg-pauseIcon::after{
+  content:"";
+  position:absolute;
+  top:50%;
+  width:7px;
+  height:22px;
+  transform:translateY(-50%);
+  border-radius:999px;
+  background:#fff;
+  opacity:.95;
+}
+.rg-pauseIcon::before{ left:19px; }
+.rg-pauseIcon::after{ right:19px; }
 </style>
 
 <script>
@@ -234,16 +235,13 @@
   const nextBtn=gallery.querySelector(".rg-next");
   if(!left||!right||!center||!prevBtn||!nextBtn) return;
 
-  // sound hint (если браузер блокирует звук)
   const soundHint = document.createElement("button");
   soundHint.type = "button";
   soundHint.className = "rg-soundHint";
   soundHint.textContent = "tap for sound";
 
-  // pause icon
   const pauseIcon = document.createElement("div");
   pauseIcon.className = "rg-pauseIcon";
-  pauseIcon.textContent = "⏸";
 
   const imgCache = new Map();
   const isWideCache = new Map();
@@ -276,7 +274,6 @@
     pauseIcon.classList.remove("is-on");
   }
 
-  // ✅ при уходе со страницы/скрытии вкладки — звук исчезает
   function onHide(){
     if(activeVideo) hardMuteAndStop(activeVideo);
   }
@@ -286,7 +283,6 @@
     if(document.hidden) onHide();
   });
 
-  /* ✅ preload для первых превью (ускоряет старт) */
   try{
     const head = document.head || document.getElementsByTagName("head")[0];
     const urls = [];
@@ -403,34 +399,31 @@
   }
 
   function wireHoverAutoplay(v){
-    let hoverPlaying = false;
     let userPaused = false;
 
     const setPauseUI = (on)=> pauseIcon.classList.toggle("is-on", !!on);
 
-    const playOnHover = async ()=>{
+    const playAuto = async ()=>{
       if(!activeVideo || activeVideo!==v) return;
       if(userPaused) { setPauseUI(true); return; }
-      hoverPlaying = true;
       setPauseUI(false);
       await tryPlayWithSound(v);
     };
 
-    const pauseOnLeave = ()=>{
+    const pauseAuto = ()=>{
       if(!activeVideo || activeVideo!==v) return;
-      hoverPlaying = false;
       hardMuteAndStop(v);
       setPauseUI(true);
     };
 
-    // ✅ видео НЕ стартует само: старт только при hover/touch
+    // стартовое состояние: paused + иконка видна
     setPauseUI(true);
 
-    // desktop hover
-    center.addEventListener("mouseenter", playOnHover, {passive:true});
-    center.addEventListener("mouseleave", pauseOnLeave, {passive:true});
+    // hover -> play, leave -> pause (но НЕ ломаем ручную паузу)
+    center.addEventListener("mouseenter", playAuto, {passive:true});
+    center.addEventListener("mouseleave", pauseAuto, {passive:true});
 
-    // click toggles pause/play (и показывает иконку)
+    // ✅ клик всегда управляет паузой/плеем (внутри hover тоже)
     const toggle = async (ev)=>{
       if(!activeVideo || activeVideo!==v) return;
       ev.preventDefault();
@@ -446,14 +439,7 @@
       setPauseUI(false);
       await tryPlayWithSound(v);
     };
-
     v.addEventListener("click", toggle);
-
-    // mobile: первый тач = play/pause (hover нет)
-    v.addEventListener("touchstart", (ev)=>{
-      // не блокируем скролл, просто считаем как жест
-      // (сам toggle уже на click, но на iOS иногда надёжнее так)
-    }, {passive:true});
 
     v.addEventListener("pause", ()=>setPauseUI(true));
     v.addEventListener("play", ()=>setPauseUI(false));
@@ -472,7 +458,7 @@
       v.src=el.src;
       if(el.poster) v.poster=el.poster;
 
-      v.autoplay=false;     // ✅ важно: НЕ автоплей сразу
+      v.autoplay=false;
       v.loop=true;
       v.playsInline=true;
 
@@ -484,18 +470,20 @@
       v.setAttribute("controlslist","nodownload noplaybackrate noremoteplayback");
       v.setAttribute("disablepictureinpicture","");
 
-      // стартово без звука и на паузе, пока не наведут
+      // стартово: пауза, без звука (пока не hover/click)
       v.muted=true;
       v.volume=1;
 
-      const ready = ()=>{
+      // ✅ фикс “лагающего” лоадера:
+      // прячем лоадер уже на metadata (постер рисуется раньше, чем canplay)
+      const readyFast = ()=>{
         v.classList.remove("is-loading");
         setLoading(center,false);
-        // остаёмся на паузе до hover, но показываем пауз-иконку
         pauseIcon.classList.add("is-on");
       };
-      v.addEventListener("loadeddata", ready, {once:true});
-      v.addEventListener("canplay", ready, {once:true});
+      v.addEventListener("loadedmetadata", readyFast, {once:true});
+      v.addEventListener("loadeddata", readyFast, {once:true});
+      v.addEventListener("canplay", readyFast, {once:true});
       v.onerror = ()=>{ v.classList.remove("is-loading"); setLoading(center,false); };
 
       soundHint.onclick = async ()=>{
@@ -513,13 +501,10 @@
       center.appendChild(v);
       activeVideo=v;
 
-      // ✅ hover autoplay + ручная пауза + иконка
       wireHoverAutoplay(v);
-
       return;
     }
 
-    // img
     const img=document.createElement("img");
     img.className="rg-main is-loading";
     img.decoding="async";
@@ -543,7 +528,6 @@
     const p=(i-1+elements.length)%elements.length;
     const n=(i+1)%elements.length;
 
-    // ✅ МГНОВЕННО включаем loading
     setLoading(left.parentElement, true);
     setLoading(right.parentElement, true);
     setLoading(center, true);
@@ -559,7 +543,6 @@
     setSide(right, previewSrc(elements[n]));
     showCenter(elements[i]);
 
-    // второе кольцо в фоне
     const p2=(p-1+elements.length)%elements.length;
     const n2=(n+1)%elements.length;
     const bg=()=>{
@@ -577,7 +560,6 @@
   prevBtn.onclick=()=>show(index-1);
   nextBtn.onclick=()=>show(index+1);
 
-  /* ✅ быстрый старт: прогреваем первые 2-3 */
   preloadElement(elements[0], "high");
   preloadElement(elements[1], "low");
   preloadElement(elements[2], "low");
