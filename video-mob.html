@@ -112,7 +112,6 @@
   if(!gallery||gallery.dataset.rgInit==="1")return;
   gallery.dataset.rgInit="1";
 
-  // ✅ материалы (видео первым)
   const elements=[
     {
       type:'video',
@@ -131,7 +130,6 @@
     {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/midnight/main/11.jpg"}
   ];
 
-  // ✅ Cloudinary fetch для картинок/постера (как в эталоне)
   const CLOUD="dmtnse4sz";
   const DPR=Math.max(1, Math.min(3, window.devicePixelRatio||1));
   const TARGET_W=Math.min(2000, Math.ceil(520 * DPR * 1.6));
@@ -158,6 +156,9 @@
   let index=0, token=0, currentVideo=null;
   let soundUnlocked=false;
 
+  // ✅ если тапнули до того как видео реально смонтировано
+  let pendingUnmute=false;
+
   const nodeCache=new Map();
   const readyCache=new Map();
   const ric = window.requestIdleCallback || ((cb)=>setTimeout(()=>cb({timeRemaining:()=>0}), 120));
@@ -167,7 +168,6 @@
 
   function setNeedsTap(on){
     center.classList.toggle("needs-tap", !!on);
-    // ✅ как в эталоне: пока needs-tap — пауза вообще не кликается
     pauseHit.style.pointerEvents = on ? "none" : "auto";
   }
 
@@ -201,7 +201,6 @@
 
     const v=document.createElement("video");
     v.className="rg-main";
-
     v.autoplay=true;
     v.loop=true;
     v.controls=false;
@@ -217,7 +216,6 @@
 
     if(el.poster) v.poster=el.poster;
 
-    // стартуем muted (чтобы autoplay точно пошёл)
     v.muted=true;
     v.volume=0;
     v.setAttribute("muted","");
@@ -312,14 +310,12 @@
   }
 
   async function startVideoSmart(v){
-    // если уже разлочено — пробуем сразу со звуком
     if(soundUnlocked){
       if(await tryPlayWithSound(v)){
         setNeedsTap(false);
         return true;
       }
     }else{
-      // пробуем вдруг уже разрешено
       if(await tryPlayWithSound(v)){
         soundUnlocked=true;
         setNeedsTap(false);
@@ -327,7 +323,6 @@
       }
     }
 
-    // fallback: muted autoplay
     try{
       v.muted=true;
       v.volume=0;
@@ -338,53 +333,73 @@
     return false;
   }
 
-  // ✅ unlock как в эталоне: 2 шага (iOS iframe)
+  // ✅ unlock как в эталоне (2 шага) + pendingUnmute
   async function unlockSound(){
-    if(!currentVideo) return;
+    if(!currentVideo){
+      pendingUnmute = true;
+      return;
+    }
 
     soundUnlocked = true;
 
-    // 1) пробуем прямо в user gesture
     if(await tryPlayWithSound(currentVideo)){
+      pendingUnmute = false;
       setNeedsTap(false);
       return;
     }
 
-    // 2) пробуем ещё раз на следующий кадр
     await new Promise(r=>requestAnimationFrame(r));
     if(await tryPlayWithSound(currentVideo)){
+      pendingUnmute = false;
       setNeedsTap(false);
       return;
     }
 
-    // если всё равно нельзя — оставляем tap
     setNeedsTap(true);
   }
 
-  function swallow(e){
-    e.preventDefault();
+  // ✅ “глушим протекание”, но НЕ ломаем click (без preventDefault на start)
+  function stopOnly(e){
     e.stopPropagation();
     if(e.stopImmediatePropagation) e.stopImmediatePropagation();
   }
+  function swallow(e){
+    e.preventDefault();
+    stopOnly(e);
+  }
 
-  // ✅ tap: блокируем протекание (и свайп) и реально анмьютим
+  // ---- TAP (срабатывает стабильно) ----
   tapBtn.addEventListener("pointerdown", (e)=>{
     if(!center.classList.contains("needs-tap")) return;
-    swallow(e);
+    stopOnly(e);
   }, true);
 
   tapBtn.addEventListener("touchstart", (e)=>{
     if(!center.classList.contains("needs-tap")) return;
+    stopOnly(e);
+  }, {passive:true, capture:true});
+
+  // делаем unlock на pointerup/touchend (iOS iframe стабильно)
+  tapBtn.addEventListener("pointerup", async (e)=>{
+    if(!center.classList.contains("needs-tap")) return;
     swallow(e);
+    await unlockSound();
+  }, true);
+
+  tapBtn.addEventListener("touchend", async (e)=>{
+    if(!center.classList.contains("needs-tap")) return;
+    swallow(e);
+    await unlockSound();
   }, {passive:false, capture:true});
 
+  // и оставляем click как запасной
   tapBtn.addEventListener("click", async (e)=>{
     if(!center.classList.contains("needs-tap")) return;
     swallow(e);
     await unlockSound();
-  });
+  }, true);
 
-  // ✅ прозрачная пауза: работает только когда needs-tap=false
+  // ---- PAUSE (только когда needs-tap=false) ----
   pauseHit.addEventListener("click", async (e)=>{
     e.preventDefault();
     const v=currentVideo;
@@ -423,7 +438,11 @@
 
     forceAutoplayMuted(v);
 
-    // чуть позже пробуем “умный старт”
+    // если тапнули раньше — пробуем анмьют сразу после монтирования
+    if(pendingUnmute){
+      setTimeout(()=>{ if(currentVideo===v) unlockSound(); }, 0);
+    }
+
     setTimeout(()=>{ if(currentVideo===v) startVideoSmart(v); }, 80);
   }
 
@@ -489,7 +508,7 @@
     dx < 0 ? show(index+1) : show(index-1);
   }, {passive:true});
 
-  // уход/сворачивание: звук пропадает (как в эталоне)
+  // уход/сворачивание: звук пропадает
   document.addEventListener("visibilitychange", ()=>{
     if(document.hidden) stopAllVideosNow();
     else if(!document.hidden && currentVideo) forceAutoplayMuted(currentVideo);
