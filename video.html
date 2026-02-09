@@ -9,6 +9,9 @@
 
     <div id="rg-center" class="rg-centerSlot">
       <span class="rg-loading is-on" aria-hidden="true">loading...</span>
+
+      <!-- ✅ прозрачная кнопка-пауза поверх видео -->
+      <button class="rg-pauseHit" type="button" aria-label="Toggle pause"></button>
     </div>
 
     <div class="rg-sideSlot">
@@ -99,15 +102,19 @@
   transform-origin:center center;
 }
 
+/* видео */
 .rg-video{
   width:100%;
   height:100%;
   display:block;
   object-fit:contain;
   background:transparent;
+
+  /* важно: само видео не кликается */
+  pointer-events:none;
 }
 
-/* убираем нативные контролы видео (iOS/Safari) */
+/* убираем нативные контролы */
 .rg-video::-webkit-media-controls,
 .rg-video::-webkit-media-controls-panel,
 .rg-video::-webkit-media-controls-play-button,
@@ -121,9 +128,8 @@
   display:none !important;
   -webkit-appearance:none !important;
 }
-.rg-video{ pointer-events:none; }
-.rg-unmute{ pointer-events:auto; }
 
+/* loading... */
 .rg-loading{
   position:absolute;
   left:50%;
@@ -140,15 +146,15 @@
   pointer-events:none;
   user-select:none;
   display:none;
+  z-index:999;
 }
 .rg-loading.is-on{ display:block; }
-#rg-gallery .rg-loading{ z-index:999; }
 
 .rg-side.is-loading,
 .rg-main.is-loading,
 .rg-video.is-loading{ opacity:0; }
 
-/* tap for sound (пилюля) */
+/* tap for sound */
 .rg-unmute{
   position:absolute;
   left:50%;
@@ -159,9 +165,9 @@
   cursor:pointer;
   user-select:none;
   -webkit-tap-highlight-color:transparent;
+  pointer-events:auto;
 }
 .rg-unmute.is-on{ display:block; }
-
 .rg-unmute::after{
   content:"tap for sound";
   font-family:"SegoeUI","Segoe UI",-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif;
@@ -175,6 +181,22 @@
   padding:12px 16px;
   border-radius:999px;
 }
+
+/* ✅ прозрачная пауза поверх всего центра (только когда видео) */
+.rg-pauseHit{
+  position:absolute;
+  inset:0;
+  z-index:1000;            /* ниже unmute(1001), выше видео */
+  display:none;
+  background:transparent;
+  border:0;
+  padding:0;
+  margin:0;
+  cursor:pointer;
+  pointer-events:auto;
+  -webkit-tap-highlight-color:transparent;
+}
+#rg-center.has-video .rg-pauseHit{ display:block; }
 
 .rg-btn{
   position:fixed;
@@ -216,6 +238,7 @@
   if(!gallery || gallery.dataset.rgInit === "1") return;
   gallery.dataset.rgInit = "1";
 
+  // ✅ ВИДЕО ПЕРВЫМ
   const elements=[
     {
       type:'video',
@@ -241,9 +264,12 @@
   const center  = document.getElementById("rg-center");
   const prevBtn = gallery.querySelector(".rg-prev");
   const nextBtn = gallery.querySelector(".rg-next");
+  const pauseHit = center.querySelector(".rg-pauseHit");
+  if(!left || !right || !center || !prevBtn || !nextBtn || !pauseHit) return;
 
   const preloadCache = new Map();
   let activeVideo = null;
+  let soundUnlocked = false;
 
   function thumbSrc(item){
     if(!item) return "";
@@ -253,6 +279,7 @@
   function preload(src, priority){
     if(!src) return Promise.resolve(false);
     if(preloadCache.has(src)) return preloadCache.get(src);
+
     const p = new Promise(resolve=>{
       const img = new Image();
       img.decoding = "async";
@@ -261,6 +288,7 @@
       img.onerror = () => resolve(false);
       img.src = src;
     });
+
     preloadCache.set(src, p);
     return p;
   }
@@ -279,13 +307,6 @@
     imgEl.classList.toggle("rg-wide", !!(item && item.wide));
   }
 
-  function stopVideo(){
-    if(!activeVideo) return;
-    try{ activeVideo.pause(); }catch(e){}
-    try{ activeVideo.removeAttribute("src"); activeVideo.load?.(); }catch(e){}
-    activeVideo = null;
-  }
-
   function setSide(imgEl, item){
     const slot = imgEl.parentElement;
     setLoading(slot, true);
@@ -302,9 +323,84 @@
     markSide(imgEl, item);
   }
 
+  function setHasVideo(on){
+    center.classList.toggle("has-video", !!on);
+  }
+
+  // ✅ пока нужен tap-for-sound — пауза выключена
+  function setNeedsTap(on){
+    pauseHit.style.pointerEvents = on ? "none" : "auto";
+  }
+
+  // ✅ звук пропадает когда юзер уходит/сворачивает
+  function silenceNow(){
+    if(!activeVideo) return;
+    try{ activeVideo.pause(); }catch(e){}
+    try{ activeVideo.muted = true; activeVideo.volume = 0; }catch(e){}
+  }
+
+  function stopVideo(){
+    if(!activeVideo) { setHasVideo(false); return; }
+    silenceNow();
+    try{ activeVideo.removeAttribute("src"); activeVideo.load?.(); }catch(e){}
+    activeVideo = null;
+    setHasVideo(false);
+  }
+
+  async function tryPlayWithSound(v){
+    try{
+      v.muted = false;
+      v.volume = 1;
+      await v.play();
+      return true;
+    }catch(e){}
+    return false;
+  }
+
+  async function startVideoSmart(v, unmuteEl){
+    // 1) пытаемся со звуком
+    if(soundUnlocked){
+      if(await tryPlayWithSound(v)){
+        if(unmuteEl) unmuteEl.classList.remove("is-on");
+        setNeedsTap(false);
+        return true;
+      }
+    }else{
+      if(await tryPlayWithSound(v)){
+        soundUnlocked = true;
+        if(unmuteEl) unmuteEl.classList.remove("is-on");
+        setNeedsTap(false);
+        return true;
+      }
+    }
+
+    // 2) fallback: muted autoplay + показываем tap
+    try{
+      v.muted = true;
+      v.volume = 0;
+      await v.play();
+    }catch(_){}
+
+    if(unmuteEl) unmuteEl.classList.add("is-on");
+    setNeedsTap(true);
+    return false;
+  }
+
+  function clearCenterKeepUI(){
+    const loading = center.querySelector(".rg-loading");
+    const pause = center.querySelector(".rg-pauseHit");
+    center.innerHTML = "";
+    if(loading) center.appendChild(loading);
+    if(pause) center.appendChild(pause);
+  }
+
   function showCenter(item){
     stopVideo();
-    center.innerHTML = '<span class="rg-loading is-on" aria-hidden="true">loading...</span>';
+    setHasVideo(false);
+    setNeedsTap(false);
+
+    clearCenterKeepUI();
+    setLoading(center, true);
 
     if(item.type === "video"){
       const v = document.createElement("video");
@@ -316,8 +412,8 @@
       v.loop = true;
       v.playsInline = true;
       v.preload = "auto";
-
       v.controls = false;
+
       v.setAttribute("playsinline", "");
       v.setAttribute("webkit-playsinline", "");
       v.setAttribute("controlslist", "nodownload noplaybackrate noremoteplayback");
@@ -329,7 +425,9 @@
 
       center.appendChild(v);
       center.appendChild(unmute);
+
       activeVideo = v;
+      setHasVideo(true);
 
       const hideLoader = ()=>{
         v.classList.remove("is-loading");
@@ -338,33 +436,28 @@
       v.addEventListener("playing", hideLoader, {once:true});
       v.addEventListener("loadeddata", hideLoader, {once:true});
       v.addEventListener("canplay", hideLoader, {once:true});
-      v.onerror = ()=>{ hideLoader(); };
+      v.onerror = hideLoader;
 
-      const trySound = async ()=>{
+      // tap for sound: не даём событию “протечь”
+      unmute.addEventListener("click", async (e)=>{
+        e.preventDefault();
+        e.stopPropagation();
+        if(e.stopImmediatePropagation) e.stopImmediatePropagation();
+
+        soundUnlocked = true;
         try{
           v.muted = false;
+          v.volume = 1;
           await v.play();
           unmute.classList.remove("is-on");
-        }catch(err){
-          try{
-            v.muted = true;
-            await v.play();
-          }catch(e){}
+          setNeedsTap(false);
+        }catch(_){
           unmute.classList.add("is-on");
-        }
-      };
-
-      unmute.addEventListener("click", async ()=>{
-        unmute.classList.remove("is-on");
-        try{
-          v.muted = false;
-          await v.play();
-        }catch(e){
-          unmute.classList.add("is-on");
+          setNeedsTap(true);
         }
       });
 
-      trySound();
+      startVideoSmart(v, unmute);
       return;
     }
 
@@ -380,6 +473,24 @@
     img.src = item.src;
     center.appendChild(img);
   }
+
+  // невидимая пауза: toggle pause/play
+  pauseHit.addEventListener("click", async (e)=>{
+    e.preventDefault();
+    const v = activeVideo;
+    if(!v) return;
+
+    // если сейчас нужен tap-for-sound — пауза выключена
+    if(pauseHit.style.pointerEvents === "none") return;
+
+    if(v.paused){
+      const unmuteEl = center.querySelector(".rg-unmute");
+      await startVideoSmart(v, unmuteEl);
+    }else{
+      try{ v.pause(); }catch(_){}
+      try{ v.muted = true; v.volume = 0; }catch(_){}
+    }
+  });
 
   async function show(i){
     const t = ++token;
@@ -420,6 +531,26 @@
 
   prevBtn.addEventListener("click", ()=>show(index - 1));
   nextBtn.addEventListener("click", ()=>show(index + 1));
+
+  // свайп
+  let sx=0;
+  gallery.addEventListener("touchstart", (e)=>{ sx = e.touches[0].clientX; }, {passive:true});
+  gallery.addEventListener("touchend", (e)=>{
+    const dx = e.changedTouches[0].clientX - sx;
+    if(Math.abs(dx) > 40) dx < 0 ? show(index+1) : show(index-1);
+  }, {passive:true});
+
+  // уход/сворачивание/выход — сразу mute+pause
+  document.addEventListener("visibilitychange", ()=>{
+    if(document.hidden) silenceNow();
+    else if(activeVideo){
+      const unmuteEl = center.querySelector(".rg-unmute");
+      if(unmuteEl) startVideoSmart(activeVideo, unmuteEl);
+    }
+  });
+  window.addEventListener("pagehide", silenceNow, {capture:true});
+  window.addEventListener("beforeunload", silenceNow, {capture:true});
+  window.addEventListener("blur", ()=>{ if(document.hidden) return; silenceNow(); }, {capture:true});
 
   preload(thumbSrc(elements[0]), "high");
   preload(thumbSrc(elements[1]), "low");
