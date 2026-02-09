@@ -20,13 +20,11 @@
   <button class="rg-btn rg-next" type="button" aria-label="Next">⟩</button>
 </div>
 
-<!-- ✅ (1) ПРОГРЕВ -->
 <link rel="dns-prefetch" href="//raw.githubusercontent.com">
 <link rel="preconnect" href="https://raw.githubusercontent.com" crossorigin>
 <link rel="dns-prefetch" href="//res.cloudinary.com">
 <link rel="preconnect" href="https://res.cloudinary.com" crossorigin>
 
-<!-- ✅ PRELOAD: ускоряет первый экран (постер видео + первые картинки) -->
 <link rel="preload" as="image" href="https://raw.githubusercontent.com/tsyomiki-collab/yuki/main/1.png">
 <link rel="preload" as="image" href="https://raw.githubusercontent.com/tsyomiki-collab/yuki/main/2.png">
 <link rel="preload" as="image" href="https://raw.githubusercontent.com/tsyomiki-collab/yuki/main/Screenshot%202026-01-26%20at%2021.32.09.png">
@@ -110,12 +108,9 @@
   display:block;
   object-fit:contain;
   background:transparent;
-
-  /* ✅ нельзя тапнуть => нельзя поставить паузу */
   pointer-events:none;
 }
 
-/* ✅ скрыть любые webkit контролы (iOS/Safari) */
 .rg-video::-webkit-media-controls,
 .rg-video::-webkit-media-controls-panel,
 .rg-video::-webkit-media-controls-play-button,
@@ -130,7 +125,6 @@
   -webkit-appearance:none !important;
 }
 
-/* ✅ poster-overlay до playing */
 .rg-posterOverlay{
   position:absolute;
   inset:0;
@@ -144,33 +138,26 @@
 }
 .rg-posterOverlay.is-on{ display:block; }
 
-/* loading... */
 .rg-loading{
   position:absolute;
   left:50%;
   top:50%;
   transform:translate(-50%,-50%);
-
   font-family:"SegoeUI","Segoe UI",-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif;
   font-weight:300;
   font-size:14px;
   letter-spacing:.01em;
   line-height:16px;
-
   pointer-events:none;
   user-select:none;
   display:none;
-
-  /* ✅ фолбэк: чтобы loading не пропадал */
   color:#111;
   mix-blend-mode:normal;
   opacity:.9;
-
-  z-index:999; /* всегда поверх */
+  z-index:999;
 }
 .rg-loading.is-on{ display:block; }
 
-/* ✅ если поддерживается — включаем difference как было */
 @supports (mix-blend-mode:difference){
   .rg-loading{
     color:#fff;
@@ -178,17 +165,14 @@
   }
 }
 
-/* ✅ ДО старта JS: показываем loading сразу (убирает белый экран) */
 #rg-gallery:not([data-rg-init="1"]) .rg-loading{
   display:block !important;
 }
 
-/* пока грузится — прячем */
 .rg-side.is-loading,
 .rg-main.is-loading,
 .rg-video.is-loading{ opacity:0; }
 
-/* tap for sound — НЕ ТРОГАЮ */
 .rg-unmute{
   position:absolute;
   left:50%;
@@ -209,14 +193,11 @@
   font-size:15px;
   letter-spacing:.01em;
   line-height:18px;
-
   color:#111;
   background:rgba(255,255,255,.92);
   border:1px solid rgba(0,0,0,.12);
   padding:12px 16px;
   border-radius:999px;
-
-  /* ✅ чтобы тап работал, даже если видео pointer-events:none */
   pointer-events:auto;
 }
 
@@ -320,8 +301,17 @@
   function stopVideo(){
     if(!activeVideo) return;
     try{ activeVideo.pause(); }catch(e){}
+    try{ activeVideo.muted = true; activeVideo.volume = 0; }catch(e){}
     try{ activeVideo.removeAttribute("src"); activeVideo.load?.(); }catch(e){}
     activeVideo = null;
+  }
+
+  // ✅ ДОБАВЛЕНО: когда юзер уходит/сворачивает — звук пропадает
+  function stopAllVideosNow(){
+    if(activeVideo){
+      try{ activeVideo.pause(); }catch(e){}
+      try{ activeVideo.muted = true; activeVideo.volume = 0; }catch(e){}
+    }
   }
 
   function markSide(imgEl, item){
@@ -356,7 +346,7 @@
       v.src = item.src;
       if(item.poster) v.poster = item.poster;
 
-      v.autoplay = true;   /* ✅ обязательно autoplay */
+      v.autoplay = true;
       v.loop = true;
       v.playsInline = true;
       v.preload = "auto";
@@ -494,6 +484,14 @@
   preloadImg(thumbSrc(elements[0]), "high");
   preloadImg(thumbSrc(elements[1]), "low");
   preloadImg(thumbSrc(elements[elements.length-1]), "low");
+
+  // ✅ ДОБАВЛЕНО: уход/сворачивание/переключение — сразу mute+pause
+  document.addEventListener("visibilitychange", ()=>{
+    if(document.hidden) stopAllVideosNow();
+  });
+  window.addEventListener("pagehide", stopAllVideosNow, {capture:true});
+  window.addEventListener("beforeunload", stopAllVideosNow, {capture:true});
+  window.addEventListener("blur", ()=>{ if(document.hidden) return; stopAllVideosNow(); }, {capture:true});
 
   show(0);
 })();
