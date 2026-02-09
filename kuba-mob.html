@@ -8,6 +8,9 @@
         tap for sound
       </button>
 
+      <!-- ✅ невидимая пауза по всей площади видео (появится только на видео) -->
+      <button class="rg-pauseHit" type="button" aria-label="Toggle pause" tabindex="-1"></button>
+
       <div class="rg-nav">
         <button class="rg-btn rg-prev" type="button">⟨</button>
         <button class="rg-btn rg-next" type="button">⟩</button>
@@ -41,18 +44,12 @@
   width:86vw;max-width:520px;
   height:62vh;max-height:560px;
   display:flex;align-items:center;justify-content:center;
-  position:relative;
-
-  pointer-events:auto; /* ✅ NEW: иначе ни пауза, ни tap не кликаются */
+  position:relative;pointer-events:none
 }
 
 .rg-main{max-width:100%;max-height:100%;object-fit:contain;display:block;pointer-events:auto}
 
-.rg-nav{
-  position:absolute;left:50%;bottom:-65px;transform:translateX(-50%);
-  display:flex;gap:25px;pointer-events:auto;
-  z-index:6; /* ✅ NEW: чтобы стрелки всегда были поверх невидимой паузы */
-}
+.rg-nav{position:absolute;left:50%;bottom:-65px;transform:translateX(-50%);display:flex;gap:25px;pointer-events:auto}
 .rg-btn{font-size:1.6rem;background:none;border:none;color:#666;cursor:pointer;padding:4px 8px;user-select:none;-webkit-tap-highlight-color:transparent}
 
 /* LOADING (mix-blend) */
@@ -70,14 +67,13 @@
   pointer-events:none;
   user-select:none;
   display:none;
-  z-index:2;
 }
 .rg-loading.is-on{display:block}
 
 /* ✅ TAP — 1:1 как в in my room */
 .rg-tap{
   position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
-  z-index:7;
+  z-index:5;
   display:none;
   pointer-events:auto;
   cursor:pointer;
@@ -98,16 +94,21 @@
 }
 #rg-center.needs-tap .rg-tap{display:block}
 
-/* ✅ NEW: невидимая пауза — перекрывает ВСЮ площадь видео/слота */
-.rg-pauseTap{
+/* ✅ невидимая кнопка паузы поверх всего видео */
+.rg-pauseHit{
   position:absolute;
   inset:0;
-  z-index:5;               /* ниже tap(7) и nav(6), выше видео */
-  background:transparent;
+  z-index:2;               /* ниже tap (5) и ниже стрелок (nav), но выше видео */
+  display:none;            /* включаем только на видео */
   pointer-events:auto;
+  background:transparent;
+  border:0;
+  padding:0;
+  margin:0;
+  cursor:pointer;
   -webkit-tap-highlight-color:transparent;
-  touch-action:manipulation;
 }
+#rg-center.has-video .rg-pauseHit{display:block}
 </style>
 
 <script>
@@ -148,6 +149,7 @@
   const nextBtn=gallery.querySelector(".rg-next");
   const loadingEl=center.querySelector(".rg-loading");
   const tapBtn=center.querySelector(".rg-tap");
+  const pauseHit=center.querySelector(".rg-pauseHit");
   const navEl=center.querySelector(".rg-nav");
 
   let index=0, token=0, currentVideo=null;
@@ -160,11 +162,13 @@
 
   function setLoading(on){ loadingEl.classList.toggle("is-on", !!on); }
   function setNeedsTap(on){ center.classList.toggle("needs-tap", !!on); }
+  function setHasVideo(on){ center.classList.toggle("has-video", !!on); }
 
   function clearCenterKeepUI(){
     center.innerHTML="";
     center.appendChild(loadingEl);
     center.appendChild(tapBtn);
+    center.appendChild(pauseHit);
     center.appendChild(navEl);
   }
 
@@ -291,50 +295,42 @@
   }
   tapBtn.addEventListener("click", (e)=>{ e.preventDefault(); unlockSound(); });
 
-  // ✅ когда уходим — звук исчезает
-  function killAudioOnLeave(){
-    if(!currentVideo) return;
-    try{ currentVideo.pause(); }catch(e){}
-    try{
-      currentVideo.muted = true;
-      currentVideo.volume = 0;
-      currentVideo.setAttribute("muted","");
-    }catch(e){}
-    try{
-      currentVideo.removeAttribute("src");
-      currentVideo.load && currentVideo.load();
-    }catch(e){}
-    currentVideo = null;
-    setNeedsTap(false);
-  }
-  document.addEventListener("visibilitychange", ()=>{
-    if(document.hidden) killAudioOnLeave();
-  }, {passive:true});
-  window.addEventListener("pagehide", killAudioOnLeave, {passive:true});
-  window.addEventListener("beforeunload", killAudioOnLeave, {passive:true});
+  // ✅ невидимая пауза по всей площади видео
+  pauseHit.addEventListener("click", (e)=>{
+    e.preventDefault();
+    const v=currentVideo;
+    if(!v) return;
+    if(v.paused){
+      // просто продолжить (звук не трогаем)
+      const p=v.play();
+      if(p && typeof p.catch==="function") p.catch(()=>{});
+    }else{
+      try{ v.pause(); }catch(err){}
+    }
+  });
 
-  // ✅ невидимая пауза по всей площади видео/слота
-  function attachInvisiblePause(layer, v){
-    const toggle = (e)=>{
-      e.preventDefault();
-      e.stopPropagation();
-      if(!v) return;
-      try{
-        if(v.paused) v.play().catch(()=>{});
-        else v.pause();
-      }catch(err){}
-    };
-    layer.addEventListener("pointerdown", toggle, {passive:false});
-    layer.addEventListener("touchstart", toggle, {passive:false});
-    layer.addEventListener("click", toggle, {passive:false});
+  function hardMuteAndStop(v){
+    if(!v) return;
+    try{ v.muted=true; v.volume=0; v.setAttribute("muted",""); }catch(e){}
+    try{ v.pause(); }catch(e){}
+  }
+
+  function stopAllVideosNow(){
+    if(currentVideo) hardMuteAndStop(currentVideo);
+    // на всякий — все видео из кэша тоже
+    for(const node of nodeCache.values()){
+      if(node && node.tagName==="VIDEO") hardMuteAndStop(node);
+    }
   }
 
   function showCenter(el){
     clearCenterKeepUI();
     setNeedsTap(false);
+    setHasVideo(false);
 
     if(currentVideo){
-      killAudioOnLeave();
+      hardMuteAndStop(currentVideo);
+      currentVideo=null;
     }
 
     if(el.type==="img"){
@@ -347,11 +343,7 @@
     center.insertBefore(v, navEl);
     currentVideo=v;
 
-    // слой паузы — на всю площадь
-    const pauseLayer=document.createElement("div");
-    pauseLayer.className="rg-pauseTap";
-    center.insertBefore(pauseLayer, navEl);
-    attachInvisiblePause(pauseLayer, v);
+    setHasVideo(true);
 
     forceAutoplayMuted(v);
 
@@ -406,6 +398,14 @@
     const d=e.changedTouches[0].clientX-startX;
     if(Math.abs(d)>40){ d<0?show(index+1):show(index-1) }
   },{passive:true});
+
+  // ✅ убрать звук когда юзер выходит со страницы / сворачивает / уходит
+  document.addEventListener("visibilitychange", ()=>{
+    if(document.hidden) stopAllVideosNow();
+    else if(!document.hidden && currentVideo) forceAutoplayMuted(currentVideo);
+  });
+  window.addEventListener("pagehide", stopAllVideosNow, {capture:true});
+  window.addEventListener("beforeunload", stopAllVideosNow, {capture:true});
 
   preloadAround(0);
   show(0);
