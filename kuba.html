@@ -1,8 +1,3 @@
-
-лоадинг сохраняем пока видео не начнется на пару сек, ускорить загурзку видео, невидимая пауза при нажатии, не убираем аутоплей, убираем звук когда юзер выходит со страницы
-если белый экран со стрелками также чтобы был виден лоадинг 
-тап не убирать
-
 <div id="rg-gallery">
   <button class="rg-btn rg-prev" type="button" aria-label="Previous">⟨</button>
 
@@ -65,7 +60,7 @@
 }
 
 .rg-sideSlot{
-  position:relative; /* ✅ loader */
+  position:relative;
   width:360px;
   height:330px;
   display:flex;
@@ -77,7 +72,7 @@
 }
 
 .rg-centerSlot{
-  position:relative; /* ✅ loader + overlay */
+  position:relative;
   width:min(1180px, 70vw);
   height:735px;
   display:flex;
@@ -111,8 +106,18 @@
   object-fit:contain;
   background:transparent;
 
-  /* ✅ чтобы нельзя было тапом ставить на паузу */
+  /* ✅ оставляем, чтобы не появлялась “нативная” пауза по тапу */
   pointer-events:none;
+}
+
+/* ✅ NEW: невидимый слой для play/pause по тапу */
+.rg-tapPause{
+  position:absolute;
+  inset:0;
+  z-index:1;
+  background:transparent;
+  pointer-events:auto;
+  -webkit-tap-highlight-color:transparent;
 }
 
 /* loading... */
@@ -138,20 +143,16 @@
 }
 .rg-loading.is-on{ display:block; }
 
-/* ✅ (2) PATCH: лоадер всегда поверх */
 #rg-gallery .rg-loading{ z-index:999; }
 
-/* ✅ ВАЖНО: ДО старта JS показываем loading всегда (убирает белый экран со стрелками) */
 #rg-gallery:not([data-rg-init="1"]) .rg-loading{
   display:block !important;
 }
 
-/* ✅ страховка: если difference вдруг “съелся” — текст всё равно виден */
 @supports not (mix-blend-mode:difference){
   .rg-loading{ color:#111; }
 }
 
-/* пока грузится — прячем контент */
 .rg-side.is-loading,
 .rg-main.is-loading,
 .rg-video.is-loading{ opacity:0; }
@@ -167,8 +168,6 @@
   user-select:none;
   -webkit-tap-highlight-color:transparent;
   z-index:2;
-
-  /* ✅ кликаем по оверлею, не по видео */
   pointer-events:auto;
 }
 .rg-unmute.is-on{ display:flex; }
@@ -183,7 +182,7 @@
 
   border:1px solid rgba(0,0,0,.12);
   background:rgba(255,255,255,.92);
-  border-radius:999px;   /* ✅ пилюля */
+  border-radius:999px;
   color:#111;
 }
 
@@ -259,7 +258,6 @@
     return item.type === "video" ? (item.poster || "") : (item.src || "");
   }
 
-  /* ✅ ускоряем самый первый показ: preload линками (постер + первая картинка) */
   (function addPreloadLinks(){
     try{
       const head = document.head || document.getElementsByTagName("head")[0];
@@ -315,9 +313,23 @@
   function stopVideo(){
     if(!activeVideo) return;
     try{ activeVideo.pause(); }catch(e){}
+    try{
+      activeVideo.muted = true;
+      activeVideo.volume = 0;
+    }catch(e){}
     try{ activeVideo.removeAttribute("src"); activeVideo.load?.(); }catch(e){}
     activeVideo = null;
   }
+
+  // ✅ NEW: когда юзер уходит/страница прячется — звук исчезает сразу
+  function killAudioOnLeave(){
+    stopVideo();
+  }
+  document.addEventListener("visibilitychange", ()=>{
+    if(document.visibilityState !== "visible") killAudioOnLeave();
+  }, {passive:true});
+  window.addEventListener("pagehide", killAudioOnLeave, {passive:true});
+  window.addEventListener("beforeunload", killAudioOnLeave, {passive:true});
 
   function setSide(imgEl, item){
     const slot = imgEl.parentElement;
@@ -338,7 +350,6 @@
   function showCenter(item){
     stopVideo();
 
-    // ✅ loader ON сразу
     center.innerHTML = '<span class="rg-loading is-on" aria-hidden="true">loading...</span>';
 
     if(item.type === "video"){
@@ -352,18 +363,25 @@
       v.playsInline = true;
       v.preload = "auto";
 
-      v.controls = false; // ✅ без панели
+      v.controls = false;
       v.setAttribute("playsinline", "");
       v.setAttribute("webkit-playsinline", "");
       v.setAttribute("controlslist", "nodownload noplaybackrate noremoteplayback");
       v.setAttribute("disablepictureinpicture", "");
+
+      // ✅ NEW: невидимая пауза по тапу (слой поверх видео)
+      const tap = document.createElement("div");
+      tap.className = "rg-tapPause";
+      tap.setAttribute("aria-hidden", "true");
 
       const unmute = document.createElement("div");
       unmute.className = "rg-unmute";
       unmute.innerHTML = "<span>tap for sound</span>";
 
       center.appendChild(v);
+      center.appendChild(tap);    // ✅ NEW
       center.appendChild(unmute);
+
       activeVideo = v;
 
       const hideLoader = ()=>{
@@ -402,6 +420,21 @@
         }
       });
 
+      // ✅ NEW: toggle play/pause по тапу, без иконок
+      tap.addEventListener("click", (e)=>{
+        e.preventDefault();
+        e.stopPropagation();
+        if(!activeVideo) return;
+
+        try{
+          if(v.paused){
+            v.play().catch(()=>{});
+          }else{
+            v.pause();
+          }
+        }catch(err){}
+      }, {passive:false});
+
       trySound();
       return;
     }
@@ -429,7 +462,6 @@
     const p = (i - 1 + elements.length) % elements.length;
     const n = (i + 1) % elements.length;
 
-    // ✅ loading сразу
     setLoading(left.parentElement, true);
     setLoading(right.parentElement, true);
     setLoading(center, true);
@@ -445,10 +477,8 @@
     setSide(right, elements[n]);
     showCenter(elements[i]);
 
-    // wide:true — скрываем боковые
     setSidesHidden(!!elements[i].wide);
 
-    // фон
     const p2 = (p - 1 + elements.length) % elements.length;
     const n2 = (n + 1) % elements.length;
     const bg = ()=>{
@@ -462,7 +492,6 @@
   prevBtn.onclick = ()=>show(index - 1);
   nextBtn.onclick = ()=>show(index + 1);
 
-  // быстрый старт
   preloadImg(thumbSrc(elements[0]), "high");
   preloadImg(thumbSrc(elements[1]), "low");
   preloadImg(thumbSrc(elements[2]), "low");
