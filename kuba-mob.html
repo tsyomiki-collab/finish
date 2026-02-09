@@ -71,7 +71,7 @@
 .rg-tap{
   position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
   z-index:5;
-  display:none;                 /* показываем через #rg-center.needs-tap */
+  display:none;
   pointer-events:auto;
   cursor:pointer;
 
@@ -90,6 +90,17 @@
   -webkit-tap-highlight-color:transparent;
 }
 #rg-center.needs-tap .rg-tap{display:block}
+
+/* ✅ NEW: невидимый слой для play/pause по тапу */
+.rg-pauseTap{
+  position:absolute;
+  inset:0;
+  z-index:4;                 /* ниже .rg-tap (5), выше видео */
+  background:transparent;
+  pointer-events:auto;
+  -webkit-tap-highlight-color:transparent;
+  touch-action:manipulation;
+}
 </style>
 
 <script>
@@ -141,7 +152,7 @@
   function keyOf(el){ return el.type==="video" ? ("v:"+el.src) : ("i:"+el.src); }
 
   function setLoading(on){ loadingEl.classList.toggle("is-on", !!on); }
-  function setNeedsTap(on){ center.classList.toggle("needs-tap", !!on); }  // ✅ вот это главное
+  function setNeedsTap(on){ center.classList.toggle("needs-tap", !!on); }
 
   function clearCenterKeepUI(){
     center.innerHTML="";
@@ -273,13 +284,53 @@
   }
   tapBtn.addEventListener("click", (e)=>{ e.preventDefault(); unlockSound(); });
 
+  // ✅ NEW: “уход со страницы” = звук исчезает железно
+  function killAudioOnLeave(){
+    if(!currentVideo) return;
+    try{ currentVideo.pause(); }catch(e){}
+    try{
+      currentVideo.muted = true;
+      currentVideo.volume = 0;
+      currentVideo.setAttribute("muted","");
+    }catch(e){}
+    // жёстко отпускаем декодер/аудио-канал (особенно полезно в iframe)
+    try{
+      currentVideo.removeAttribute("src");
+      currentVideo.load && currentVideo.load();
+    }catch(e){}
+    currentVideo = null;
+    setNeedsTap(false);
+  }
+
+  document.addEventListener("visibilitychange", ()=>{
+    if(document.hidden) killAudioOnLeave();
+  }, {passive:true});
+  window.addEventListener("pagehide", killAudioOnLeave, {passive:true});
+  window.addEventListener("beforeunload", killAudioOnLeave, {passive:true});
+
+  // ✅ NEW: невидимая пауза по тапу (по слою поверх видео)
+  function attachInvisiblePause(tapLayer, v){
+    tapLayer.addEventListener("click", (e)=>{
+      e.preventDefault();
+      e.stopPropagation();
+      if(!v) return;
+      try{
+        if(v.paused){
+          v.play().catch(()=>{});
+        }else{
+          v.pause();
+        }
+      }catch(err){}
+    }, {passive:false});
+  }
+
   function showCenter(el){
     clearCenterKeepUI();
     setNeedsTap(false);
 
+    // если было видео — прибиваем звук/ресурсы
     if(currentVideo){
-      try{ currentVideo.pause(); }catch(e){}
-      currentVideo=null;
+      killAudioOnLeave();
     }
 
     if(el.type==="img"){
@@ -291,6 +342,12 @@
     try{ v.load(); }catch(e){}
     center.insertBefore(v, navEl);
     currentVideo=v;
+
+    // ✅ NEW: слой для play/pause
+    const pauseTap=document.createElement("div");
+    pauseTap.className="rg-pauseTap";
+    center.insertBefore(pauseTap, navEl);
+    attachInvisiblePause(pauseTap, v);
 
     forceAutoplayMuted(v);
 
@@ -345,11 +402,6 @@
     const d=e.changedTouches[0].clientX-startX;
     if(Math.abs(d)>40){ d<0?show(index+1):show(index-1) }
   },{passive:true});
-
-  document.addEventListener("visibilitychange", ()=>{
-    if(document.hidden && currentVideo) currentVideo.pause();
-    else if(!document.hidden && currentVideo) forceAutoplayMuted(currentVideo);
-  });
 
   preloadAround(0);
   show(0);
