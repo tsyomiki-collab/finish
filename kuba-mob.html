@@ -161,7 +161,14 @@
   function keyOf(el){ return el.type==="video" ? ("v:"+el.src) : ("i:"+el.src); }
 
   function setLoading(on){ loadingEl.classList.toggle("is-on", !!on); }
-  function setNeedsTap(on){ center.classList.toggle("needs-tap", !!on); }
+
+  // ✅ ИЗМЕНЕНО: needs-tap теперь еще и блокирует паузу (чтобы первый тап не ставил pause)
+  function setNeedsTap(on){
+    center.classList.toggle("needs-tap", !!on);
+    // пока показан tap-for-sound — пауза не кликается
+    pauseHit.style.pointerEvents = on ? "none" : "auto";
+  }
+
   function setHasVideo(on){ center.classList.toggle("has-video", !!on); }
 
   function clearCenterKeepUI(){
@@ -281,10 +288,10 @@
       v.muted=false;
       v.volume=1;
       await v.play();
-      setNeedsTap(false);
+      setNeedsTap(false);   // ✅ тут автоматически включаем pauseHit обратно
       return true;
     }catch(e){
-      setNeedsTap(true);
+      setNeedsTap(true);    // ✅ тут автоматически выключаем pauseHit
       return false;
     }
   }
@@ -293,15 +300,26 @@
     if(!currentVideo) return;
     await tryEnableSound(currentVideo);
   }
-  tapBtn.addEventListener("click", (e)=>{ e.preventDefault(); unlockSound(); });
+
+  // ✅ ИЗМЕНЕНО: стопаем всплытие, чтобы “тап” не триггерил паузу
+  tapBtn.addEventListener("click", (e)=>{
+    e.preventDefault();
+    e.stopPropagation();
+    if(e.stopImmediatePropagation) e.stopImmediatePropagation();
+    unlockSound();
+  });
 
   // ✅ невидимая пауза по всей площади видео
   pauseHit.addEventListener("click", (e)=>{
     e.preventDefault();
     const v=currentVideo;
     if(!v) return;
+
+    // если tap-for-sound показан, пауза и так выключена (pointer-events:none),
+    // но оставляем дополнительный guard на всякий случай
+    if(center.classList.contains("needs-tap")) return;
+
     if(v.paused){
-      // просто продолжить (звук не трогаем)
       const p=v.play();
       if(p && typeof p.catch==="function") p.catch(()=>{});
     }else{
@@ -317,7 +335,6 @@
 
   function stopAllVideosNow(){
     if(currentVideo) hardMuteAndStop(currentVideo);
-    // на всякий — все видео из кэша тоже
     for(const node of nodeCache.values()){
       if(node && node.tagName==="VIDEO") hardMuteAndStop(node);
     }
@@ -347,6 +364,7 @@
 
     forceAutoplayMuted(v);
 
+    // пробуем звук после старта; если нельзя — покажем tap и выключим pauseHit
     setTimeout(()=>{ if(currentVideo===v) tryEnableSound(v); }, 120);
 
     gallery.addEventListener("pointerdown", unlockSound, {once:true, passive:true, capture:true});
