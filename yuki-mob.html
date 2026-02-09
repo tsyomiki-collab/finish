@@ -7,7 +7,7 @@
       <!-- tap for sound (как in my room) -->
       <button class="rg-tap" type="button" aria-label="Tap for sound">tap for sound</button>
 
-      <!-- ✅ ДОБАВЛЕНО: прозрачная кнопка паузы (только на видео) -->
+      <!-- прозрачная кнопка паузы (только на видео) -->
       <button class="rg-pauseHit" type="button" aria-label="Toggle pause"></button>
 
       <div class="rg-nav">
@@ -17,6 +17,16 @@
     </div>
   </div>
 </div>
+
+<!-- ✅ прогрев соединений (ускоряет первый байт) -->
+<link rel="dns-prefetch" href="//cdn.jsdelivr.net">
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+<link rel="dns-prefetch" href="//raw.githubusercontent.com">
+<link rel="preconnect" href="https://raw.githubusercontent.com" crossorigin>
+<link rel="dns-prefetch" href="//res.cloudinary.com">
+<link rel="preconnect" href="https://res.cloudinary.com" crossorigin>
+<link rel="dns-prefetch" href="//c.s-microsoft.com">
+<link rel="preconnect" href="https://c.s-microsoft.com" crossorigin>
 
 <style>
 @font-face{
@@ -34,7 +44,7 @@
 #rg-gallery{position:fixed;inset:0;background:#fcfcfc;z-index:9999;overflow:hidden}
 #rg-stage{position:absolute;inset:0;top:-60px;display:flex;align-items:center;justify-content:center;pointer-events:none}
 
-/* ✅ ВИЗУАЛ РОВНО КАК В ЭТОМ КОДЕ */
+/* визуал как был */
 #rg-center{
   width:86vw;max-width:520px;
   height:62vh;max-height:560px;
@@ -47,10 +57,9 @@
 .rg-nav{position:absolute;left:50%;bottom:-65px;transform:translateX(-50%);display:flex;gap:25px;pointer-events:auto}
 .rg-btn{font-size:1.6rem;background:none;border:none;color:#666;cursor:pointer;padding:4px 8px;user-select:none;-webkit-tap-highlight-color:transparent}
 
-/* ✅ LOADING — mix blend + SegoeUI 300 + size 10 */
+/* loading */
 .rg-loading{
-  position:absolute;
-  left:50%; top:50%;
+  position:absolute;left:50%; top:50%;
   transform:translate(-50%,-50%);
   font-family:"SegoeUI","Segoe UI",-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif;
   font-weight:300;
@@ -67,7 +76,7 @@
 }
 .rg-loading.is-on{display:block}
 
-/* ✅ TAP — как in my room (белая пилюля) */
+/* tap pill */
 .rg-tap{
   position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
   z-index:6;
@@ -89,17 +98,15 @@
 }
 #rg-center.needs-tap .rg-tap{display:block}
 
-/* ✅ ДОБАВЛЕНО: прозрачная кнопка паузы поверх всего видео */
+/* pause hit */
 .rg-pauseHit{
-  position:absolute;
-  inset:0;
-  z-index:3;               /* ниже tap (6), выше видео */
-  display:none;            /* включаем только на видео */
+  position:absolute;inset:0;
+  z-index:3;
+  display:none;
   pointer-events:auto;
   background:transparent;
   border:0;
-  padding:0;
-  margin:0;
+  padding:0;margin:0;
   cursor:pointer;
   -webkit-tap-highlight-color:transparent;
 }
@@ -112,21 +119,27 @@
   if(!gallery||gallery.dataset.rgInit==="1")return;
   gallery.dataset.rgInit="1";
 
+  // ✅ CDN-ускорение: jsDelivr вместо raw (визуально то же самое)
+  const GH_USER="tsyomiki-collab";
+  const GH_REPO="yuki";
+  const GH_BRANCH="main";
+  const cdn = (p)=>`https://cdn.jsdelivr.net/gh/${GH_USER}/${GH_REPO}@${GH_BRANCH}/${p}`;
+
   const elements=[
-    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/yuki/main/1.png"},
-    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/yuki/main/2.png"},
-    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/yuki/main/3.png"},
-    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/yuki/main/4.png"},
-    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/yuki/main/5.png"},
-    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/yuki/main/6.png"},
-    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/yuki/main/7.png"},
-    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/yuki/main/8.png"},
-    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/yuki/main/9.png"},
-    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/yuki/main/10.png"},
+    {type:'img',src:cdn("1.png")},
+    {type:'img',src:cdn("2.png")},
+    {type:'img',src:cdn("3.png")},
+    {type:'img',src:cdn("4.png")},
+    {type:'img',src:cdn("5.png")},
+    {type:'img',src:cdn("6.png")},
+    {type:'img',src:cdn("7.png")},
+    {type:'img',src:cdn("8.png")},
+    {type:'img',src:cdn("9.png")},
+    {type:'img',src:cdn("10.png")},
     {
       type:'video',
       src:"https://res.cloudinary.com/dmtnse4sz/video/upload/v1769448409/%E5%8D%83%E8%91%89%E9%9B%84%E5%96%9C_Yuki_Chiba_%E3%83%BC_%E3%83%81%E3%82%A7%E3%83%BC%E3%83%B3%E3%81%8C%E6%AD%8C%E3%81%86_Chain_Ga_Utau_Official_Music_Video_-_%E5%8D%83%E8%91%89_%E9%9B%84%E5%96%9C_Yuki_Chiba_1080p_h264_youtube_koptk0.mp4",
-      poster:"https://raw.githubusercontent.com/tsyomiki-collab/yuki/main/Screenshot%202026-01-26%20at%2021.32.09.png"
+      poster:cdn("Screenshot%202026-01-26%20at%2021.32.09.png")
     }
   ];
 
@@ -144,6 +157,7 @@
 
   const nodeCache=new Map();
   const readyCache=new Map();
+
   const ric = window.requestIdleCallback || ((cb)=>setTimeout(()=>cb({timeRemaining:()=>0}), 120));
 
   function setLoading(on){ loadingEl.classList.toggle("is-on", !!on); }
@@ -151,7 +165,8 @@
   function setHasVideo(on){ center.classList.toggle("has-video", !!on); }
 
   function clearCenterKeepUI(){
-    center.innerHTML="";
+    // без лишних переинициализаций кнопок/лоадера
+    while(center.firstChild) center.removeChild(center.firstChild);
     center.appendChild(loadingEl);
     center.appendChild(tapBtn);
     center.appendChild(pauseHit);
@@ -191,15 +206,18 @@
     v.setAttribute("playsinline","");
     v.setAttribute("webkit-playsinline","");
 
-    v.preload="auto";
+    // ✅ быстрее старт: не тянем весь mp4 заранее
+    v.preload="metadata";
+
     v.setAttribute("controlsList","nodownload noplaybackrate noremoteplayback");
     v.setAttribute("disablePictureInPicture","");
     v.setAttribute("disableRemotePlayback","");
 
     if(el.poster) v.poster=el.poster;
 
-    v.muted=false;
-    v.volume=1;
+    // ✅ ключевое: autoplay всегда мгновенно как muted (без “попытки со звуком”)
+    v.muted=true;
+    v.volume=0;
 
     v.src=el.src;
 
@@ -251,26 +269,26 @@
     });
   }
 
-  async function tryPlayWithSound(v){
-    v.muted=false;
-    v.volume=1;
-    try{ await v.play(); return true; }catch(e){}
-    return false;
-  }
-
   async function startVideoSmart(v){
     setNeedsTap(false);
 
+    // если уже разлочено — пробуем со звуком
     if(soundUnlocked){
-      if(await tryPlayWithSound(v)) return true;
-    }else{
-      if(await tryPlayWithSound(v)) { soundUnlocked=true; return true; }
+      v.muted=false;
+      v.volume=1;
+      try{
+        await v.play();
+        return true;
+      }catch(e){
+        // если не вышло — падаем обратно в muted
+        v.muted=true; v.volume=0;
+      }
     }
 
-    v.muted=true;
-    v.volume=0;
+    // по умолчанию — мгновенный autoplay muted
     try{ await v.play(); }catch(e){}
-    setNeedsTap(true);
+    // если звук не разлочен — показываем pill
+    if(!soundUnlocked) setNeedsTap(true);
     return false;
   }
 
@@ -278,9 +296,15 @@
     soundUnlocked=true;
     setNeedsTap(false);
     if(!currentVideo) return;
+
     currentVideo.muted=false;
     currentVideo.volume=1;
-    try{ await currentVideo.play(); }catch(e){ setNeedsTap(true); }
+
+    // можно “дотянуть” видео активнее после тапа
+    try{ currentVideo.preload="auto"; }catch(e){}
+
+    try{ await currentVideo.play(); }
+    catch(e){ setNeedsTap(true); }
   }
 
   function stopCurrentVideo(){
@@ -289,7 +313,6 @@
     currentVideo=null;
   }
 
-  // ✅ ДОБАВЛЕНО: уход/выход — звук убирается жёстко
   function silenceNow(){
     const v=currentVideo;
     if(!v) return;
@@ -298,14 +321,12 @@
     setNeedsTap(false);
   }
 
-  // ✅ ДОБАВЛЕНО: прозрачная пауза на всю площадь видео
   pauseHit.addEventListener("click",(e)=>{
     e.preventDefault();
     const v=currentVideo;
     if(!v) return;
 
     if(v.paused){
-      // продолжаем (если звук уже разлочен — попробуем со звуком, иначе останется muted)
       startVideoSmart(v);
     }else{
       try{ v.pause(); }catch(err){}
@@ -384,7 +405,6 @@
     window.addEventListener("keydown", unlock, {once:true, capture:true});
   })();
 
-  // ✅ ДОБАВЛЕНО: уход/сворачивание/выход — звук сразу пропадает
   document.addEventListener("visibilitychange", ()=>{
     if(document.hidden) silenceNow();
     else if(!document.hidden && currentVideo){
@@ -394,6 +414,20 @@
   window.addEventListener("pagehide", silenceNow, {capture:true});
   window.addEventListener("beforeunload", silenceNow, {capture:true});
   window.addEventListener("blur", ()=>{ if(document.hidden) return; silenceNow(); }, {capture:true});
+
+  // ✅ фоновый прогрев всего списка (не блокирует первый кадр)
+  ric(()=>{
+    let k=0;
+    const step=()=>{
+      const start=performance.now();
+      while(k<elements.length && performance.now()-start<10){
+        ensureReady(elements[k], "low");
+        k++;
+      }
+      if(k<elements.length) ric(step);
+    };
+    step();
+  });
 
   preloadAround(0);
   show(0);
