@@ -439,31 +439,29 @@
   prevBtn.onclick=()=>show(index-1);
   nextBtn.onclick=()=>show(index+1);
 
-  // ✅ FIX: тап по видео/пауза/тап-кнопке НЕ должен считаться свайпом (иначе улетает на след. фото)
-  let startX=0;
-  let ignoreSwipe=false;
+  // ✅ FIX (железный): свайп только если реально был MOVE и жест горизонтальный и большой
+  let sx=0, sy=0, dx=0, dy=0, moved=false;
 
-  function isInteractiveTarget(target){
-    if(!target) return false;
-    return !!(target.closest && target.closest(".rg-pauseHit, .rg-tap, .rg-nav, .rg-btn, video"));
-  }
+  gallery.addEventListener("touchstart", (e)=>{
+    const t = e.touches[0];
+    sx = t.clientX; sy = t.clientY;
+    dx = 0; dy = 0;
+    moved = false;
+  }, {passive:true});
 
-  gallery.addEventListener("touchstart",(e)=>{
-    ignoreSwipe = isInteractiveTarget(e.target);
-    if(ignoreSwipe) return;
-    startX = e.touches[0].clientX;
-  },{passive:true});
+  gallery.addEventListener("touchmove", (e)=>{
+    const t = e.touches[0];
+    dx = t.clientX - sx;
+    dy = t.clientY - sy;
+    if(Math.abs(dx) > 10 || Math.abs(dy) > 10) moved = true;
+  }, {passive:true});
 
-  gallery.addEventListener("touchend",(e)=>{
-    if(ignoreSwipe){
-      ignoreSwipe=false;
-      return;
-    }
-    const d=e.changedTouches[0].clientX-startX;
-    if(Math.abs(d)>40){
-      d<0?show(index+1):show(index-1);
-    }
-  },{passive:true});
+  gallery.addEventListener("touchend", (e)=>{
+    if(!moved) return;                      // тап ≠ свайп
+    if(Math.abs(dx) <= Math.abs(dy)) return; // вертикальный жест игнор
+    if(Math.abs(dx) < 70) return;           // порог выше, чтобы тап не листал
+    dx < 0 ? show(index+1) : show(index-1);
+  }, {passive:true});
 
   document.addEventListener("visibilitychange", ()=>{
     if(document.hidden) stopAllVideosNow();
