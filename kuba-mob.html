@@ -36,13 +36,19 @@
 }
 
 #rg-gallery{position:fixed;inset:0;background:#fcfcfc;z-index:9999;overflow:hidden}
-#rg-stage{position:absolute;inset:0;top:-60px;display:flex;align-items:center;justify-content:center;pointer-events:none}
 
+/* ✅ FIX: pointer-events ДОЛЖНЫ БЫТЬ ВКЛЮЧЕНЫ */
+#rg-stage{
+  position:absolute;inset:0;top:-60px;
+  display:flex;align-items:center;justify-content:center;
+  pointer-events:auto;
+}
 #rg-center{
   width:86vw;max-width:520px;
   height:62vh;max-height:560px;
   display:flex;align-items:center;justify-content:center;
-  position:relative;pointer-events:none
+  position:relative;
+  pointer-events:auto;
 }
 
 .rg-main{max-width:100%;max-height:100%;object-fit:contain;display:block;pointer-events:auto}
@@ -53,54 +59,28 @@
 .rg-loading{
   position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
   font-family:"SegoeUI","Segoe UI",-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif;
-  font-weight:300;
-  font-size:10px;
-  line-height:16px;
-  letter-spacing:0.01em;
-  white-space:nowrap;
-  color:#fff;
-  mix-blend-mode:difference;
-  opacity:.9;
-  pointer-events:none;
-  user-select:none;
-  display:none;
+  font-weight:300;font-size:10px;line-height:16px;letter-spacing:0.01em;white-space:nowrap;
+  color:#fff;mix-blend-mode:difference;opacity:.9;
+  pointer-events:none;user-select:none;display:none;
 }
 .rg-loading.is-on{display:block}
 
 .rg-tap{
   position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
-  z-index:5;
-  display:none;
-  pointer-events:auto;
-  cursor:pointer;
-
+  z-index:5;display:none;pointer-events:auto;cursor:pointer;
   font-family:"SegoeUI","Segoe UI",-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif;
-  font-weight:300;
-  font-size:8px;
-  line-height:16px;
-  letter-spacing:0.01em;
-  white-space:nowrap;
+  font-weight:300;font-size:8px;line-height:16px;letter-spacing:0.01em;white-space:nowrap;
   color:#000;
-
-  padding:6px 10px;
-  background:rgba(255,255,255,.95);
-  border:1px solid rgba(0,0,0,.14);
-  border-radius:999px;
+  padding:6px 10px;background:rgba(255,255,255,.95);
+  border:1px solid rgba(0,0,0,.14);border-radius:999px;
   -webkit-tap-highlight-color:transparent;
 }
 #rg-center.needs-tap .rg-tap{display:block}
 
 .rg-pauseHit{
-  position:absolute;
-  inset:0;
-  z-index:2;
-  display:none;
-  pointer-events:auto;
-  background:transparent;
-  border:0;
-  padding:0;
-  margin:0;
-  cursor:pointer;
+  position:absolute;inset:0;
+  z-index:2;display:none;pointer-events:auto;
+  background:transparent;border:0;padding:0;margin:0;cursor:pointer;
   -webkit-tap-highlight-color:transparent;
 }
 #rg-center.has-video .rg-pauseHit{display:block}
@@ -192,10 +172,7 @@
 
     const v=document.createElement("video");
     v.className="rg-main";
-
-    v.autoplay=true;
-    v.loop=true;
-    v.controls=false;
+    v.autoplay=true; v.loop=true; v.controls=false;
 
     v.playsInline=true;
     v.setAttribute("playsinline","");
@@ -208,11 +185,7 @@
 
     if(el.poster) v.poster=el.poster;
 
-    // стартуем muted (чтобы autoplay точно пошёл)
-    v.muted=true;
-    v.volume=0;
-    v.setAttribute("muted","");
-
+    v.muted=true; v.volume=0; v.setAttribute("muted","");
     v.src=el.src;
 
     nodeCache.set(k,v);
@@ -227,9 +200,7 @@
       if(el.type==="img"){
         const img=ensureImg(el.src);
         const done = async ()=>{
-          if(img.decode){
-            try{ await img.decode(); }catch(e){}
-          }
+          if(img.decode){ try{ await img.decode(); }catch(e){} }
           resolve(true);
         };
         if(img.complete){ done(); return; }
@@ -270,10 +241,7 @@
       if(!v.paused) return;
       tries++;
 
-      v.muted=true;
-      v.volume=0;
-      v.setAttribute("muted","");
-
+      v.muted=true; v.volume=0; v.setAttribute("muted","");
       const p=v.play();
       if(p && typeof p.catch==="function"){
         p.catch(()=>{ if(tries<MAX) requestAnimationFrame(attempt); });
@@ -291,7 +259,6 @@
     setTimeout(attempt, 600);
   }
 
-  // ✅ FIX: снимаем mute ЖЁСТКО (атрибут + проперти)
   async function tryPlayWithSound(v){
     try{
       v.muted = false;
@@ -304,52 +271,36 @@
   }
 
   async function startVideoSmart(v){
-    // если уже разлочено — пробуем сразу со звуком
     if(soundUnlocked){
-      if(await tryPlayWithSound(v)){
-        setNeedsTap(false);
-        return true;
-      }
+      if(await tryPlayWithSound(v)){ setNeedsTap(false); return true; }
     }else{
-      // пробуем вдруг уже разрешено
-      if(await tryPlayWithSound(v)){
-        soundUnlocked=true;
-        setNeedsTap(false);
-        return true;
-      }
+      if(await tryPlayWithSound(v)){ soundUnlocked=true; setNeedsTap(false); return true; }
     }
 
-    // fallback: muted autoplay
     try{
-      v.muted=true;
-      v.volume=0;
-      v.setAttribute("muted","");
+      v.muted=true; v.volume=0; v.setAttribute("muted","");
       await v.play();
     }catch(_){}
     setNeedsTap(true);
     return false;
   }
 
-  // ✅ FIX: unlock делаем в 2 шага (iOS iframe)
   async function unlockSound(){
     if(!currentVideo) return;
 
     soundUnlocked = true;
 
-    // 1) пробуем прямо в user gesture
     if(await tryPlayWithSound(currentVideo)){
       setNeedsTap(false);
       return;
     }
 
-    // 2) пробуем ещё раз на следующий кадр
     await new Promise(r=>requestAnimationFrame(r));
     if(await tryPlayWithSound(currentVideo)){
       setNeedsTap(false);
       return;
     }
 
-    // если всё равно нельзя — оставляем tap
     setNeedsTap(true);
   }
 
@@ -359,7 +310,6 @@
     if(e.stopImmediatePropagation) e.stopImmediatePropagation();
   }
 
-  // tap: блокируем “протекание” и реально анмьютим
   tapBtn.addEventListener("pointerdown", (e)=>{
     if(!center.classList.contains("needs-tap")) return;
     swallow(e);
@@ -376,7 +326,6 @@
     await unlockSound();
   });
 
-  // прозрачная пауза
   pauseHit.addEventListener("click", async (e)=>{
     e.preventDefault();
     const v=currentVideo;
@@ -412,10 +361,8 @@
     currentVideo=v;
 
     setHasVideo(true);
-
     forceAutoplayMuted(v);
 
-    // чуть позже пробуем “умный старт”
     setTimeout(()=>{ if(currentVideo===v) startVideoSmart(v); }, 80);
   }
 
@@ -457,7 +404,6 @@
   prevBtn.onclick=()=>show(index-1);
   nextBtn.onclick=()=>show(index+1);
 
-  // свайп (железный)
   let sx=0, sy=0, dx=0, dy=0, moved=false;
 
   gallery.addEventListener("touchstart", (e)=>{
@@ -481,7 +427,6 @@
     dx < 0 ? show(index+1) : show(index-1);
   }, {passive:true});
 
-  // уход/сворачивание: звук пропадает
   document.addEventListener("visibilitychange", ()=>{
     if(document.hidden) stopAllVideosNow();
     else if(!document.hidden && currentVideo) forceAutoplayMuted(currentVideo);
