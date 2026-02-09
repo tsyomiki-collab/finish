@@ -108,7 +108,7 @@
   background:transparent;
 }
 
-/* ✅ УБИРАЕМ ЛЮБЫЕ НАТИВНЫЕ КНОПКИ/ПАНЕЛИ (особенно на iOS/Safari) */
+/* убираем нативные панели iOS/Safari */
 .rg-video::-webkit-media-controls,
 .rg-video::-webkit-media-controls-panel,
 .rg-video::-webkit-media-controls-play-button,
@@ -123,24 +123,24 @@
   -webkit-appearance:none !important;
 }
 
-.rg-video{ pointer-events:none; }           /* ✅ само видео нельзя тапнуть */
-.rg-unmute{ pointer-events:auto; }          /* ✅ тап-зона для звука работает */
+.rg-video{ pointer-events:none; }
+.rg-unmute{ pointer-events:auto; }
 
-/* ✅ невидимая пауза по всей площади видео */
+/* прозрачная кнопка паузы */
 .rg-pauseHit{
   position:absolute;
   inset:0;
-  z-index:900;               /* ниже tap-for-sound (1001), но выше видео */
+  z-index:900;
   background:transparent;
   border:0;
   padding:0;
   margin:0;
   cursor:pointer;
   -webkit-tap-highlight-color:transparent;
-  pointer-events:auto;       /* ✅ ВАЖНО: чтобы кнопка реально ловила тап/клик */
+  pointer-events:auto;
 }
 
-/* loading... */
+/* loading */
 .rg-loading{
   position:absolute;
   left:50%;
@@ -165,7 +165,7 @@
 .rg-main.is-loading,
 .rg-video.is-loading{ opacity:0; }
 
-/* ✅ TAP FOR SOUND — КАК ВО ВТОРОМ КОДЕ */
+/* tap for sound */
 .rg-unmute{
   position:absolute;
   left:50%;
@@ -215,11 +215,6 @@
   -webkit-appearance:none;
   -webkit-tap-highlight-color:transparent;
 }
-.rg-btn:focus{ outline:none; }
-.rg-btn:focus-visible{
-  outline:2px solid rgba(0,0,0,.25);
-  outline-offset:3px;
-}
 .rg-prev{ left:80px; }
 .rg-next{ right:80px; }
 
@@ -227,9 +222,6 @@
   .rg-sideSlot{ display:none; }
   .rg-centerSlot{ width:92vw; }
 }
-
-.rg-centerSlot, .rg-sideSlot { contain: layout paint size; }
-.rg-main { will-change: contents; }
 </style>
 
 <script>
@@ -238,7 +230,7 @@
   if(!gallery || gallery.dataset.rgInit === "1") return;
   gallery.dataset.rgInit = "1";
 
-  const elements=[
+  const elements = [
     {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/midnight/main/1.jpg", wide:true},
     {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/midnight/main/2.jpg", wide:true},
     {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/midnight/main/3.jpg"},
@@ -247,258 +239,72 @@
     {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/midnight/main/6.jpg"},
     {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/midnight/main/7.jpg"},
     {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/midnight/main/8.jpg", wide:true},
-    {
-      type:'video',
-      src:"https://res.cloudinary.com/dmtnse4sz/video/upload/v1769859479/9_tz6zq9.mp4",
-      poster:"https://raw.githubusercontent.com/tsyomiki-collab/midnight/main/Screenshot%202026-01-31%20at%2015.42.16.png"
-    },
+    {type:'video',src:"https://res.cloudinary.com/dmtnse4sz/video/upload/v1769859479/9_tz6zq9.mp4"},
     {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/midnight/main/10.jpg"},
     {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/midnight/main/11.jpg"}
   ];
 
-  let index = 0, token = 0;
+  let index = 0;
+  const left = document.getElementById("rg-left");
+  const right = document.getElementById("rg-right");
+  const center = document.getElementById("rg-center");
 
-  const left    = document.getElementById("rg-left");
-  const right   = document.getElementById("rg-right");
-  const center  = document.getElementById("rg-center");
-  const prevBtn = gallery.querySelector(".rg-prev");
-  const nextBtn = gallery.querySelector(".rg-next");
-  if(!left || !right || !center || !prevBtn || !nextBtn) return;
-
-  const preloadCache = new Map();
-  const videoCache = new Set();
-  let activeVideo = null;
-
-  function thumbSrc(item){
-    if(!item) return "";
-    return item.type === "video" ? (item.poster || "") : (item.src || "");
-  }
-
-  function preload(src, priority){
-    if(!src) return Promise.resolve(false);
-    if(preloadCache.has(src)) return preloadCache.get(src);
-
-    const p = new Promise(resolve=>{
-      const img = new Image();
-      img.decoding = "async";
-      try{ if(priority) img.fetchPriority = priority; }catch(e){}
-      img.onload = () => resolve(true);
-      img.onerror = () => resolve(false);
-      img.src = src;
+  function stopAllVideos(){
+    const vids = gallery.querySelectorAll("video");
+    vids.forEach(v=>{
+      try{ v.muted = true; v.pause(); }catch(e){}
     });
-
-    preloadCache.set(src, p);
-    return p;
   }
 
-  function setLoading(slotEl, on){
-    const l = slotEl.querySelector(".rg-loading");
-    if(l) l.classList.toggle("is-on", !!on);
-  }
+  function show(i){
+    if(i < 0) i = elements.length - 1;
+    if(i >= elements.length) i = 0;
+    index = i;
 
-  function setSidesHidden(h){
-    left.style.visibility  = h ? "hidden" : "visible";
-    right.style.visibility = h ? "hidden" : "visible";
-  }
-
-  function markSide(imgEl, item){
-    imgEl.classList.toggle("rg-wide", !!(item && item.wide));
-  }
-
-  function hardMuteAndStop(v){
-    if(!v) return;
-    try{ v.muted = true; v.volume = 0; v.setAttribute("muted",""); }catch(e){}
-    try{ v.pause(); }catch(e){}
-  }
-
-  function stopVideo(){
-    if(!activeVideo) return;
-    hardMuteAndStop(activeVideo);
-    try{ activeVideo.removeAttribute("src"); activeVideo.load?.(); }catch(e){}
-    activeVideo = null;
-  }
-
-  function stopAllVideosNow(){
-    if(activeVideo) hardMuteAndStop(activeVideo);
-    for(const v of videoCache){
-      hardMuteAndStop(v);
-    }
-  }
-
-  function setSide(imgEl, item){
-    const slot = imgEl.parentElement;
-    setLoading(slot, true);
-
-    imgEl.classList.add("is-loading");
-    imgEl.decoding = "async";
-    imgEl.loading = "eager";
-    try{ imgEl.fetchPriority = "low"; }catch(e){}
-
-    imgEl.onload = ()=>{ imgEl.classList.remove("is-loading"); setLoading(slot,false); };
-    imgEl.onerror= ()=>{ imgEl.classList.remove("is-loading"); setLoading(slot,false); };
-
-    imgEl.src = thumbSrc(item) || "";
-    markSide(imgEl, item);
-  }
-
-  function showCenter(item){
-    stopVideo();
-    center.innerHTML = '<span class="rg-loading is-on" aria-hidden="true">loading...</span>';
+    const item = elements[i];
+    center.innerHTML = '<span class="rg-loading is-on">loading...</span>';
 
     if(item.type === "video"){
       const v = document.createElement("video");
-      v.className = "rg-video is-loading";
+      v.className = "rg-video";
       v.src = item.src;
-      if(item.poster) v.poster = item.poster;
-
       v.autoplay = true;
       v.loop = true;
       v.playsInline = true;
       v.preload = "auto";
 
       v.controls = false;
-      v.setAttribute("controls", "false");
-      v.setAttribute("playsinline", "");
-      v.setAttribute("webkit-playsinline", "");
-      v.setAttribute("controlslist", "nodownload noplaybackrate noremoteplayback");
-      v.setAttribute("disablepictureinpicture", "");
-      v.setAttribute("disableRemotePlayback", "");
+      v.removeAttribute("controls"); // FIX Safari
 
       v.muted = true;
       v.volume = 0;
       v.setAttribute("muted","");
 
-      const unmute = document.createElement("div");
-      unmute.className = "rg-unmute";
-
       const pauseHit = document.createElement("button");
-      pauseHit.type = "button";
       pauseHit.className = "rg-pauseHit";
-      pauseHit.setAttribute("aria-label","Toggle pause");
-
-      pauseHit.addEventListener("click", (e)=>{
-        e.preventDefault();
-        if(!activeVideo) return;
-        if(activeVideo.paused){
-          const p = activeVideo.play();
-          if(p && typeof p.catch==="function") p.catch(()=>{});
-        }else{
-          try{ activeVideo.pause(); }catch(err){}
-        }
-      });
+      pauseHit.onclick = ()=>{
+        if(v.paused) v.play();
+        else v.pause();
+      };
 
       center.appendChild(v);
       center.appendChild(pauseHit);
-      center.appendChild(unmute);
-
-      activeVideo = v;
-      videoCache.add(v);
-
-      const hideLoader = ()=>{
-        v.classList.remove("is-loading");
-        setLoading(center, false);
-      };
-      v.addEventListener("playing", hideLoader, {once:true});
-      v.addEventListener("loadeddata", hideLoader, {once:true});
-      v.addEventListener("canplay", hideLoader, {once:true});
-      v.onerror = ()=>{ hideLoader(); };
-
-      const trySound = async ()=>{
-        try{
-          v.muted = false;
-          v.volume = 1;
-          await v.play();
-          unmute.classList.remove("is-on");
-        }catch(err){
-          try{
-            v.muted = true;
-            v.volume = 0;
-            await v.play();
-          }catch(e){}
-          unmute.classList.add("is-on");
-        }
-      };
-
-      unmute.addEventListener("click", async ()=>{
-        unmute.classList.remove("is-on");
-        try{
-          v.muted = false;
-          v.volume = 1;
-          await v.play();
-        }catch(e){
-          unmute.classList.add("is-on");
-        }
-      });
-
-      trySound();
       return;
     }
 
     const img = document.createElement("img");
-    img.className = "rg-main is-loading";
-    img.decoding = "async";
-    img.loading = "eager";
-    try{ img.fetchPriority = "high"; }catch(e){}
-
-    img.onload = ()=>{ img.classList.remove("is-loading"); setLoading(center,false); };
-    img.onerror= ()=>{ img.classList.remove("is-loading"); setLoading(center,false); };
-
+    img.className = "rg-main";
     img.src = item.src;
     center.appendChild(img);
   }
 
-  async function show(i){
-    const t = ++token;
+  gallery.querySelector(".rg-prev").onclick = ()=>show(index - 1);
+  gallery.querySelector(".rg-next").onclick = ()=>show(index + 1);
 
-    if(i < 0) i = elements.length - 1;
-    if(i >= elements.length) i = 0;
-    index = i;
-
-    const p = (i - 1 + elements.length) % elements.length;
-    const n = (i + 1) % elements.length;
-
-    setLoading(left.parentElement, true);
-    setLoading(right.parentElement, true);
-    setLoading(center, true);
-
-    await Promise.all([
-      preload(thumbSrc(elements[i]), "high"),
-      preload(thumbSrc(elements[p]), "low"),
-      preload(thumbSrc(elements[n]), "low")
-    ]);
-    if(t !== token) return;
-
-    setSide(left,  elements[p]);
-    setSide(right, elements[n]);
-    showCenter(elements[i]);
-
-    setSidesHidden(!!elements[i].wide && elements[i].type !== "video");
-
-    const p2 = (p - 1 + elements.length) % elements.length;
-    const n2 = (n + 1) % elements.length;
-    const bg = ()=>{
-      preload(thumbSrc(elements[p2]), "low");
-      preload(thumbSrc(elements[n2]), "low");
-    };
-    if("requestIdleCallback" in window) requestIdleCallback(bg, {timeout:600});
-    else setTimeout(bg, 0);
-  }
-
-  prevBtn.addEventListener("click", ()=>show(index - 1));
-  nextBtn.addEventListener("click", ()=>show(index + 1));
-
-  // ✅ убрать звук при уходе/сворачивании страницы
   document.addEventListener("visibilitychange", ()=>{
-    if(document.hidden) stopAllVideosNow();
+    if(document.hidden) stopAllVideos();
   });
-  window.addEventListener("pagehide", stopAllVideosNow, {capture:true});
-  window.addEventListener("beforeunload", stopAllVideosNow, {capture:true});
-  window.addEventListener("freeze", stopAllVideosNow, {capture:true}); // ✅ iOS/Safari
-  window.addEventListener("blur", stopAllVideosNow, {capture:true});   // ✅ iOS/Safari
-
-  preload(thumbSrc(elements[0]), "high");
-  preload(thumbSrc(elements[1]), "low");
-  preload(thumbSrc(elements[2]), "low");
+  window.addEventListener("pagehide", stopAllVideos, {capture:true});
 
   show(0);
 })();
