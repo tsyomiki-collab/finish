@@ -148,7 +148,7 @@
   const navEl=center.querySelector(".rg-nav");
 
   let index=0, token=0, currentVideo=null;
-  let soundUnlocked=false;              // ✅ как во втором проекте
+  let soundUnlocked=false;
 
   const nodeCache=new Map();
   const readyCache=new Map();
@@ -159,7 +159,6 @@
 
   function setNeedsTap(on){
     center.classList.toggle("needs-tap", !!on);
-    // ✅ пока нужен tap — пауза выключена (и «первый клик» не перехватит пауза)
     pauseHit.style.pointerEvents = on ? "none" : "auto";
   }
 
@@ -209,7 +208,6 @@
 
     if(el.poster) v.poster=el.poster;
 
-    // стартуем безопасно (muted) — дальше попробуем включить звук smart
     v.muted=true;
     v.volume=0;
     v.setAttribute("muted","");
@@ -301,17 +299,13 @@
     return false;
   }
 
-  // ✅ как во втором проекте: если звук не разлочен — играем muted и показываем tap,
-  // а паузу выключаем, чтобы «первый клик» ушёл тапу.
   async function startVideoSmart(v){
-    // пробуем со звуком (если уже разлочено — сразу ок)
     if(soundUnlocked){
       if(await tryPlayWithSound(v)){
         setNeedsTap(false);
         return true;
       }
     }else{
-      // иногда iOS разлочит звук с первого разрешённого жеста (tap) — тут не форсим
       if(await tryPlayWithSound(v)){
         soundUnlocked=true;
         setNeedsTap(false);
@@ -319,21 +313,18 @@
       }
     }
 
-    // fallback: muted autoplay
     try{
       v.muted=true;
       v.volume=0;
       v.setAttribute("muted","");
       await v.play();
     }catch(_){}
-    setNeedsTap(true);   // ✅ показываем tap, пауза выключена
+    setNeedsTap(true);
     return false;
   }
 
   async function unlockSound(){
     if(!currentVideo) return;
-
-    // ✅ только tap разлочивает звук
     try{
       soundUnlocked=true;
       if(await tryPlayWithSound(currentVideo)){
@@ -346,7 +337,6 @@
     }
   }
 
-  // ✅ tap должен «забрать» первый жест и не дать pauseHit/другим обработчикам сработать
   function swallow(e){
     e.preventDefault();
     e.stopPropagation();
@@ -369,7 +359,6 @@
     await unlockSound();
   });
 
-  // ✅ невидимая пауза: работает только когда tap не нужен
   pauseHit.addEventListener("click", async (e)=>{
     e.preventDefault();
     const v=currentVideo;
@@ -378,12 +367,10 @@
     if(center.classList.contains("needs-tap")) return;
 
     if(v.paused){
-      // если вдруг звук разлочен — стартуем smart (со звуком), иначе будет muted+tap
       await startVideoSmart(v);
     }else{
       try{ v.pause(); }catch(err){}
       try{ v.muted=true; v.volume=0; v.setAttribute("muted",""); }catch(e2){}
-      // tap не показываем при паузе — как во втором проекте (только если автоплей со звуком запрещён)
       if(!soundUnlocked) setNeedsTap(true);
     }
   });
@@ -410,10 +397,7 @@
 
     setHasVideo(true);
 
-    // ✅ сначала гарантируем, что хоть muted autoplay стартанёт быстро
     forceAutoplayMuted(v);
-
-    // ✅ затем — логика как во втором проекте: либо со звуком, либо tap+блок паузы
     setTimeout(()=>{ if(currentVideo===v) startVideoSmart(v); }, 80);
   }
 
@@ -455,14 +439,32 @@
   prevBtn.onclick=()=>show(index-1);
   nextBtn.onclick=()=>show(index+1);
 
+  // ✅ FIX: тап по видео/пауза/тап-кнопке НЕ должен считаться свайпом (иначе улетает на след. фото)
   let startX=0;
-  gallery.addEventListener("touchstart",e=>{startX=e.touches[0].clientX},{passive:true});
-  gallery.addEventListener("touchend",e=>{
-    const d=e.changedTouches[0].clientX-startX;
-    if(Math.abs(d)>40){ d<0?show(index+1):show(index-1) }
+  let ignoreSwipe=false;
+
+  function isInteractiveTarget(target){
+    if(!target) return false;
+    return !!(target.closest && target.closest(".rg-pauseHit, .rg-tap, .rg-nav, .rg-btn, video"));
+  }
+
+  gallery.addEventListener("touchstart",(e)=>{
+    ignoreSwipe = isInteractiveTarget(e.target);
+    if(ignoreSwipe) return;
+    startX = e.touches[0].clientX;
   },{passive:true});
 
-  // ✅ уход со страницы/сворачивание: звук убирается
+  gallery.addEventListener("touchend",(e)=>{
+    if(ignoreSwipe){
+      ignoreSwipe=false;
+      return;
+    }
+    const d=e.changedTouches[0].clientX-startX;
+    if(Math.abs(d)>40){
+      d<0?show(index+1):show(index-1);
+    }
+  },{passive:true});
+
   document.addEventListener("visibilitychange", ()=>{
     if(document.hidden) stopAllVideosNow();
     else if(!document.hidden && currentVideo) forceAutoplayMuted(currentVideo);
