@@ -9,6 +9,7 @@
 
     <div id="rg-center" class="rg-centerSlot">
       <span class="rg-loading is-on" aria-hidden="true">loading...</span>
+      <!-- сюда вставится img/video -->
     </div>
 
     <div class="rg-sideSlot">
@@ -20,6 +21,7 @@
   <button class="rg-btn rg-next" type="button">⟩</button>
 </div>
 
+<!-- ✅ прогрев доменов (ускоряет) -->
 <link rel="dns-prefetch" href="//raw.githubusercontent.com">
 <link rel="preconnect" href="https://raw.githubusercontent.com" crossorigin>
 <link rel="dns-prefetch" href="//res.cloudinary.com">
@@ -90,12 +92,26 @@
   display:flex;
   align-items:center;
   justify-content:center;
+  box-sizing:border-box;
   font-size:3rem;
+  line-height:1;
+  padding:0;
   border:0;
   background:transparent;
   color:#666;
   cursor:pointer;
+  user-select:none;
+  appearance:none;
+  -webkit-appearance:none;
+  -webkit-tap-highlight-color:transparent;
 }
+
+.rg-btn:focus{ outline:none; }
+.rg-btn:focus-visible{
+  outline:2px solid rgba(0,0,0,.25);
+  outline-offset:3px;
+}
+.rg-btn:active{ transform:translateY(-50%); }
 
 .rg-prev{ left:80px; }
 .rg-next{ right:80px; }
@@ -105,53 +121,84 @@
   .rg-centerSlot{ width:92vw; }
 }
 
+/* меньше лагов */
+.rg-centerSlot, .rg-sideSlot { contain: layout paint size; }
+.rg-main { will-change: contents; }
+
+/* ✅ если текущий элемент горизонтальный — боковых НЕТ */
+#rg-gallery.rg-wide .rg-sideSlot{ display:none; }
+
+/* loading... */
 .rg-loading{
   position:absolute;
   left:50%;
   top:50%;
   transform:translate(-50%,-50%);
-  font-family:"SegoeUI","Segoe UI",system-ui;
+  font-family:"SegoeUI","Segoe UI",-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif;
   font-weight:300;
   font-size:13px;
   letter-spacing:.01em;
   line-height:16px;
+
   color:#fff;
   mix-blend-mode:difference;
   opacity:.9;
+
   pointer-events:none;
   user-select:none;
   display:none;
 }
 .rg-loading.is-on{ display:block; }
 
+/* ✅ главное: когда медиа грузится — прячем его, а лоадер сверху */
 .rg-side.is-loading,
 .rg-main.is-loading{ opacity:0; }
 
+/* ✅ PATCH: лоадер всегда поверх */
 #rg-gallery .rg-loading{ z-index:999; }
 
-/* иконка паузы */
+/* подсказка для звука */
+.rg-soundHint{
+  position:absolute;
+  left:50%;
+  bottom:14px;
+  transform:translateX(-50%);
+  padding:10px 14px;
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+  font-weight:300;
+  font-size:13px;
+  letter-spacing:.01em;
+  line-height:16px;
+  border:1px solid rgba(0,0,0,.12);
+  background:rgba(255,255,255,.92);
+  border-radius:999px;
+  color:#111;
+  cursor:pointer;
+  user-select:none;
+  display:none;
+}
+#rg-gallery.rg-needsTap .rg-soundHint{ display:block; }
+
+/* ✅ иконка паузы по центру (появляется только когда paused) */
 .rg-pauseIcon{
   position:absolute;
-  right:18px;
-  bottom:18px;
-  width:42px;
-  height:42px;
-  border-radius:999px;
-  background:rgba(255,255,255,.9);
-  border:1px solid rgba(0,0,0,.12);
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  font-size:16px;
-  color:#111;
-  opacity:0;
+  left:50%;
+  top:50%;
+  transform:translate(-50%,-50%);
+  font-family:"SegoeUI","Segoe UI",-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif;
+  font-weight:300;
+  font-size:32px;
+  line-height:1;
+  letter-spacing:.01em;
+  color:#fff;
+  mix-blend-mode:difference;
+  opacity:.92;
+  user-select:none;
   pointer-events:none;
-  transition:opacity .2s ease;
+  display:none;
+  z-index:998;
 }
-.rg-centerSlot:hover .rg-pauseIcon{
-  opacity:1;
-  pointer-events:auto;
-}
+.rg-pauseIcon.is-on{ display:block; }
 </style>
 
 <script>
@@ -179,12 +226,27 @@
   ];
 
   let index=0, token=0;
+
   const left=document.getElementById("rg-left");
   const right=document.getElementById("rg-right");
   const center=document.getElementById("rg-center");
   const prevBtn=gallery.querySelector(".rg-prev");
   const nextBtn=gallery.querySelector(".rg-next");
+  if(!left||!right||!center||!prevBtn||!nextBtn) return;
 
+  // sound hint (если браузер блокирует звук)
+  const soundHint = document.createElement("button");
+  soundHint.type = "button";
+  soundHint.className = "rg-soundHint";
+  soundHint.textContent = "tap for sound";
+
+  // pause icon
+  const pauseIcon = document.createElement("div");
+  pauseIcon.className = "rg-pauseIcon";
+  pauseIcon.textContent = "⏸";
+
+  const imgCache = new Map();
+  const isWideCache = new Map();
   let activeVideo=null;
 
   function setLoading(slotEl, on){
@@ -192,22 +254,217 @@
     if(l) l.classList.toggle("is-on", !!on);
   }
 
-  function stopVideo(){
-    if(!activeVideo) return;
-    try{ activeVideo.muted=true; }catch(e){}
-    try{ activeVideo.pause(); }catch(e){}
-    activeVideo=null;
+  function previewSrc(el){
+    return el.type==="video" ? (el.poster||"") : (el.src||"");
   }
 
-  window.addEventListener("pagehide", stopVideo, {capture:true});
-  window.addEventListener("beforeunload", stopVideo, {capture:true});
+  function hardMuteAndStop(v){
+    if(!v) return;
+    try{ v.pause(); }catch(e){}
+    try{ v.muted = true; }catch(e){}
+    try{ v.volume = 0; }catch(e){}
+  }
+
+  function stopVideo(){
+    if(!activeVideo) return;
+    const v = activeVideo;
+    hardMuteAndStop(v);
+    try{ v.removeAttribute("src"); v.load?.(); }catch(e){}
+    activeVideo=null;
+    gallery.classList.remove("rg-needsTap");
+    soundHint.style.display="none";
+    pauseIcon.classList.remove("is-on");
+  }
+
+  // ✅ при уходе со страницы/скрытии вкладки — звук исчезает
+  function onHide(){
+    if(activeVideo) hardMuteAndStop(activeVideo);
+  }
+  window.addEventListener("pagehide", onHide, {passive:true});
+  window.addEventListener("beforeunload", onHide, {passive:true});
   document.addEventListener("visibilitychange", ()=>{
-    if(document.hidden) stopVideo();
-  }, {capture:true});
+    if(document.hidden) onHide();
+  });
+
+  /* ✅ preload для первых превью (ускоряет старт) */
+  try{
+    const head = document.head || document.getElementsByTagName("head")[0];
+    const urls = [];
+    for(let i=0;i<elements.length && urls.length<10;i++){
+      const u = previewSrc(elements[i]);
+      if(u && !urls.includes(u)) urls.push(u);
+    }
+    urls.slice(0,8).forEach((href,i)=>{
+      if(document.querySelector(`link[rel="preload"][href="${href}"]`)) return;
+      const link=document.createElement("link");
+      link.rel="preload";
+      link.as="image";
+      link.href=href;
+      try{ link.fetchPriority = (i<2 ? "high" : "low"); }catch(e){}
+      head.appendChild(link);
+    });
+  }catch(e){}
+
+  function preloadImage(src, priority){
+    if(!src) return Promise.resolve(false);
+    if(imgCache.has(src)) return imgCache.get(src);
+
+    const p = new Promise(r=>{
+      const i=new Image();
+      i.decoding="async";
+      try{ if(priority) i.fetchPriority = priority; }catch(e){}
+      i.onload=()=>r(true);
+      i.onerror=()=>r(false);
+      i.src=src;
+    });
+
+    imgCache.set(src,p);
+    return p;
+  }
+
+  function preloadVideoMeta(src){
+    return new Promise(r=>{
+      if(!src) return r(false);
+      const v=document.createElement("video");
+      v.preload="metadata";
+      v.onloadedmetadata=()=>r(true);
+      v.onerror=()=>r(false);
+      v.src=src;
+    });
+  }
+
+  function preloadElement(el, priority){
+    if(el.type==="video"){
+      return Promise.all([
+        preloadImage(el.poster, priority),
+        preloadVideoMeta(el.src)
+      ]);
+    }
+    return preloadImage(el.src, priority);
+  }
+
+  function getIsWideByImage(src){
+    if(!src) return Promise.resolve(false);
+    if(isWideCache.has(src)) return Promise.resolve(isWideCache.get(src));
+    return new Promise(resolve=>{
+      const img=new Image();
+      img.decoding="async";
+      img.onload=()=>{
+        const wide=img.naturalWidth>img.naturalHeight;
+        isWideCache.set(src,wide);
+        resolve(wide);
+      };
+      img.onerror=()=>{
+        isWideCache.set(src,false);
+        resolve(false);
+      };
+      img.src=src;
+    });
+  }
+
+  function getIsWide(el){
+    return getIsWideByImage(el.type==="video" ? el.poster : el.src);
+  }
+
+  function setSide(imgEl, src){
+    const slot = imgEl.parentElement;
+
+    setLoading(slot, true);
+    imgEl.classList.add("is-loading");
+
+    imgEl.decoding="async";
+    imgEl.loading="eager";
+    try{ imgEl.fetchPriority="low"; }catch(e){}
+
+    imgEl.onload=()=>{ imgEl.classList.remove("is-loading"); setLoading(slot,false); };
+    imgEl.onerror=()=>{ imgEl.classList.remove("is-loading"); setLoading(slot,false); };
+
+    imgEl.src = src || "";
+  }
+
+  async function tryPlayWithSound(v){
+    try{
+      v.muted=false;
+      v.volume=1;
+      await v.play();
+      gallery.classList.remove("rg-needsTap");
+      soundHint.style.display="none";
+      return true;
+    }catch(err){
+      try{
+        v.muted=true;
+        v.volume=1;
+        await v.play();
+      }catch(e){}
+      gallery.classList.add("rg-needsTap");
+      soundHint.style.display="block";
+      return false;
+    }
+  }
+
+  function wireHoverAutoplay(v){
+    let hoverPlaying = false;
+    let userPaused = false;
+
+    const setPauseUI = (on)=> pauseIcon.classList.toggle("is-on", !!on);
+
+    const playOnHover = async ()=>{
+      if(!activeVideo || activeVideo!==v) return;
+      if(userPaused) { setPauseUI(true); return; }
+      hoverPlaying = true;
+      setPauseUI(false);
+      await tryPlayWithSound(v);
+    };
+
+    const pauseOnLeave = ()=>{
+      if(!activeVideo || activeVideo!==v) return;
+      hoverPlaying = false;
+      hardMuteAndStop(v);
+      setPauseUI(true);
+    };
+
+    // ✅ видео НЕ стартует само: старт только при hover/touch
+    setPauseUI(true);
+
+    // desktop hover
+    center.addEventListener("mouseenter", playOnHover, {passive:true});
+    center.addEventListener("mouseleave", pauseOnLeave, {passive:true});
+
+    // click toggles pause/play (и показывает иконку)
+    const toggle = async (ev)=>{
+      if(!activeVideo || activeVideo!==v) return;
+      ev.preventDefault();
+
+      if(!v.paused){
+        userPaused = true;
+        hardMuteAndStop(v);
+        setPauseUI(true);
+        return;
+      }
+
+      userPaused = false;
+      setPauseUI(false);
+      await tryPlayWithSound(v);
+    };
+
+    v.addEventListener("click", toggle);
+
+    // mobile: первый тач = play/pause (hover нет)
+    v.addEventListener("touchstart", (ev)=>{
+      // не блокируем скролл, просто считаем как жест
+      // (сам toggle уже на click, но на iOS иногда надёжнее так)
+    }, {passive:true});
+
+    v.addEventListener("pause", ()=>setPauseUI(true));
+    v.addEventListener("play", ()=>setPauseUI(false));
+  }
 
   function showCenter(el){
     stopVideo();
-    center.innerHTML = '<span class="rg-loading is-on">loading...</span>';
+
+    center.innerHTML = '<span class="rg-loading is-on" aria-hidden="true">loading...</span>';
+    center.appendChild(soundHint);
+    center.appendChild(pauseIcon);
 
     if(el.type==="video"){
       const v=document.createElement("video");
@@ -215,55 +472,70 @@
       v.src=el.src;
       if(el.poster) v.poster=el.poster;
 
-      v.autoplay=true;
+      v.autoplay=false;     // ✅ важно: НЕ автоплей сразу
       v.loop=true;
       v.playsInline=true;
-      v.muted=false;
+
       v.controls=false;
       v.preload="auto";
 
-      v.style.pointerEvents="none";
-      center.onmouseenter=()=> v.style.pointerEvents="auto";
-      center.onmouseleave=()=> v.style.pointerEvents="none";
+      v.setAttribute("playsinline","");
+      v.setAttribute("webkit-playsinline","");
+      v.setAttribute("controlslist","nodownload noplaybackrate noremoteplayback");
+      v.setAttribute("disablepictureinpicture","");
 
-      const icon=document.createElement("div");
-      icon.className="rg-pauseIcon";
-      icon.textContent="⏸";
+      // стартово без звука и на паузе, пока не наведут
+      v.muted=true;
+      v.volume=1;
 
-      icon.onclick=()=>{
-        if(v.paused){ v.play(); icon.textContent="⏸"; }
-        else{ v.pause(); icon.textContent="▶"; }
+      const ready = ()=>{
+        v.classList.remove("is-loading");
+        setLoading(center,false);
+        // остаёмся на паузе до hover, но показываем пауз-иконку
+        pauseIcon.classList.add("is-on");
+      };
+      v.addEventListener("loadeddata", ready, {once:true});
+      v.addEventListener("canplay", ready, {once:true});
+      v.onerror = ()=>{ v.classList.remove("is-loading"); setLoading(center,false); };
+
+      soundHint.onclick = async ()=>{
+        if(!activeVideo) return;
+        try{
+          activeVideo.muted=false;
+          activeVideo.volume=1;
+          await activeVideo.play();
+          gallery.classList.remove("rg-needsTap");
+          soundHint.style.display="none";
+          pauseIcon.classList.remove("is-on");
+        }catch(e){}
       };
 
-      v.addEventListener("play", ()=> icon.textContent="⏸");
-      v.addEventListener("pause", ()=> icon.textContent="▶");
-
-      v.onplaying=()=>{ v.classList.remove("is-loading"); setLoading(center,false); };
-
       center.appendChild(v);
-      center.appendChild(icon);
       activeVideo=v;
 
-      v.play().catch(()=>{ v.muted=true; v.play().catch(()=>{}); });
+      // ✅ hover autoplay + ручная пауза + иконка
+      wireHoverAutoplay(v);
+
       return;
     }
 
+    // img
     const img=document.createElement("img");
     img.className="rg-main is-loading";
+    img.decoding="async";
+    img.loading="eager";
+    try{ img.fetchPriority="high"; }catch(e){}
+
     img.onload=()=>{ img.classList.remove("is-loading"); setLoading(center,false); };
+    img.onerror=()=>{ img.classList.remove("is-loading"); setLoading(center,false); };
+
     img.src=el.src;
     center.appendChild(img);
   }
 
-  function setSide(imgEl, src){
-    const slot=imgEl.parentElement;
-    setLoading(slot,true);
-    imgEl.classList.add("is-loading");
-    imgEl.onload=()=>{ imgEl.classList.remove("is-loading"); setLoading(slot,false); };
-    imgEl.src=src;
-  }
+  async function show(i){
+    const t=++token;
 
-  function show(i){
     if(i<0)i=elements.length-1;
     if(i>=elements.length)i=0;
     index=i;
@@ -271,13 +543,44 @@
     const p=(i-1+elements.length)%elements.length;
     const n=(i+1)%elements.length;
 
-    setSide(left, elements[p].type==="video" ? elements[p].poster : elements[p].src);
-    setSide(right, elements[n].type==="video" ? elements[n].poster : elements[n].src);
+    // ✅ МГНОВЕННО включаем loading
+    setLoading(left.parentElement, true);
+    setLoading(right.parentElement, true);
+    setLoading(center, true);
+
+    await Promise.all([
+      preloadElement(elements[i], "high"),
+      preloadElement(elements[p], "low"),
+      preloadElement(elements[n], "low")
+    ]);
+    if(t!==token) return;
+
+    setSide(left,  previewSrc(elements[p]));
+    setSide(right, previewSrc(elements[n]));
     showCenter(elements[i]);
+
+    // второе кольцо в фоне
+    const p2=(p-1+elements.length)%elements.length;
+    const n2=(n+1)%elements.length;
+    const bg=()=>{
+      preloadElement(elements[p2], "low");
+      preloadElement(elements[n2], "low");
+    };
+    if("requestIdleCallback" in window) requestIdleCallback(bg, {timeout:600});
+    else setTimeout(bg, 0);
+
+    const wide = await getIsWide(elements[i]);
+    if(t!==token) return;
+    gallery.classList.toggle("rg-wide", wide);
   }
 
   prevBtn.onclick=()=>show(index-1);
   nextBtn.onclick=()=>show(index+1);
+
+  /* ✅ быстрый старт: прогреваем первые 2-3 */
+  preloadElement(elements[0], "high");
+  preloadElement(elements[1], "low");
+  preloadElement(elements[2], "low");
 
   show(0);
 })();
