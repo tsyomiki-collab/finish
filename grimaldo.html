@@ -8,7 +8,8 @@
     </div>
 
     <div id="rg-center" class="rg-centerSlot">
-      <span class="rg-loading is-on" aria-hidden="true">loading...</span>
+      <!-- ✅ лоадер центра ВСЕГДА существует (не удаляем его innerHTML) -->
+      <span class="rg-loading rg-centerLoading is-on" aria-hidden="true">loading...</span>
       <!-- сюда вставится img/video -->
     </div>
 
@@ -152,7 +153,7 @@
 .rg-side.is-loading,
 .rg-main.is-loading{ opacity:0; }
 
-/* ✅ PATCH: лоадер всегда поверх */
+/* ✅ лоадер всегда поверх */
 #rg-gallery .rg-loading{ z-index:999; }
 
 /* подсказка для звука */
@@ -177,40 +178,20 @@
 }
 #rg-gallery.rg-needsTap .rg-soundHint{ display:block; }
 
-/* ✅ hover pause overlay (не влияет на визуал, пока не наведёшь/не поставишь паузу) */
-.rg-vidOverlay{
+/* ✅ невидимая пауза/плей (клик по центру), визуально ничего не меняет */
+.rg-hit{
   position:absolute;
-  left:50%;
-  top:50%;
-  transform:translate(-50%,-50%);
-  width:74px;
-  height:74px;
+  inset:0;
   border:0;
   padding:0;
-  border-radius:999px;
-  background:rgba(0,0,0,.28);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  cursor:pointer;
+  margin:0;
+  background:transparent;
   opacity:0;
-  pointer-events:none;
-  z-index:998;
+  cursor:pointer;
+  z-index:50; /* выше видео, ниже loading (999) и soundHint */
   -webkit-tap-highlight-color:transparent;
 }
-#rg-center:hover .rg-vidOverlay{ opacity:1; pointer-events:auto; }
-#rg-center .rg-vidOverlay.is-paused{ opacity:1; pointer-events:auto; }
-
-.rg-vidOverlay svg{
-  width:28px;
-  height:28px;
-  display:block;
-}
-.rg-vidOverlay .ico-play{ display:none; }
-.rg-vidOverlay.is-paused .ico-pause{ display:none; }
-.rg-vidOverlay.is-paused .ico-play{ display:block; }
+.rg-hit:focus{ outline:none; }
 </style>
 
 <script>
@@ -246,7 +227,10 @@
   const nextBtn=gallery.querySelector(".rg-next");
   if(!left||!right||!center||!prevBtn||!nextBtn) return;
 
-  // sound hint (если браузер блокирует autoplay со звуком)
+  // ✅ гарантируем, что центральный лоадер всегда находится и управляется отдельно
+  const centerLoader = center.querySelector(".rg-loading");
+  if(!centerLoader) return;
+
   const soundHint = document.createElement("button");
   soundHint.type = "button";
   soundHint.className = "rg-soundHint";
@@ -255,11 +239,13 @@
   const imgCache = new Map();
   const isWideCache = new Map();
   let activeVideo=null;
-  let activeOverlay=null;
 
   function setLoading(slotEl, on){
     const l = slotEl.querySelector(".rg-loading");
     if(l) l.classList.toggle("is-on", !!on);
+  }
+  function setCenterLoading(on){
+    centerLoader.classList.toggle("is-on", !!on);
   }
 
   function previewSrc(el){
@@ -267,32 +253,25 @@
   }
 
   function stopVideo(){
-    if(activeOverlay){
-      try{ activeOverlay.remove(); }catch(e){}
-      activeOverlay=null;
-    }
     if(!activeVideo) return;
     try{ activeVideo.pause(); }catch(e){}
-    try{ activeVideo.muted = true; activeVideo.volume = 0; }catch(e){}
+    try{ activeVideo.muted = true; }catch(e){}
     try{ activeVideo.removeAttribute("src"); activeVideo.load?.(); }catch(e){}
     activeVideo=null;
     gallery.classList.remove("rg-needsTap");
     soundHint.style.display="none";
   }
 
-  // ✅ если уйти со страницы/скрыть вкладку — звук исчезает
-  function hardSilence(){
-    if(!activeVideo) return;
-    try{ activeVideo.pause(); }catch(e){}
-    try{ activeVideo.muted = true; activeVideo.volume = 0; }catch(e){}
-    stopVideo();
-  }
-  window.addEventListener("pagehide", hardSilence, {passive:true});
-  window.addEventListener("beforeunload", hardSilence, {passive:true});
-  window.addEventListener("blur", ()=>{ if(activeVideo){ try{ activeVideo.pause(); activeVideo.muted=true; activeVideo.volume=0; }catch(e){} } }, {passive:true});
-  document.addEventListener("visibilitychange", ()=>{ if(document.hidden) hardSilence(); }, {passive:true});
+  /* ✅ если ушли со страницы/скрыли iframe — звук должен исчезнуть */
+  const stopOnLeave = ()=>{ stopVideo(); };
+  window.addEventListener("pagehide", stopOnLeave, {capture:true});
+  window.addEventListener("beforeunload", stopOnLeave, {capture:true});
+  document.addEventListener("visibilitychange", ()=>{
+    if(document.hidden) stopOnLeave();
+  }, {capture:true});
+  window.addEventListener("blur", stopOnLeave, {capture:true});
 
-  /* ✅ PATCH: <link rel="preload"> для первых картинок/постеров */
+  /* ✅ preload первых картинок/постеров */
   try{
     const head = document.head || document.getElementsByTagName("head")[0];
     const urls = [];
@@ -388,65 +367,20 @@
     imgEl.src = src || "";
   }
 
-  function makeVideoOverlay(v){
-    const b=document.createElement("button");
-    b.type="button";
-    b.className="rg-vidOverlay";
-    b.setAttribute("aria-label","Play/Pause");
-    b.innerHTML = `
-      <svg class="ico-pause" viewBox="0 0 24 24" aria-hidden="true">
-        <rect x="6.6" y="5.6" width="3.8" height="12.8" rx="1.2" fill="#fff"></rect>
-        <rect x="13.6" y="5.6" width="3.8" height="12.8" rx="1.2" fill="#fff"></rect>
-      </svg>
-      <svg class="ico-play" viewBox="0 0 24 24" aria-hidden="true">
-        <path d="M9 7.2v9.6c0 .7.8 1.1 1.4.7l7.6-4.8c.6-.4.6-1.3 0-1.7L10.4 6.5c-.6-.4-1.4 0-1.4.7z" fill="#fff"></path>
-      </svg>
-    `;
-
-    const sync = ()=>{
-      if(!activeVideo) return;
-      b.classList.toggle("is-paused", !!activeVideo.paused);
-    };
-
-    b.addEventListener("click", async (e)=>{
-      e.preventDefault();
-      e.stopPropagation();
-      if(!activeVideo) return;
-
-      if(activeVideo.paused){
-        try{
-          await activeVideo.play();
-        }catch(err){}
-      }else{
-        try{ activeVideo.pause(); }catch(err){}
-      }
-      sync();
+  // ✅ очищаем только медиа/оверлеи, НЕ трогаем centerLoader (чтобы он не пропадал на длинной загрузке)
+  function clearCenterKeepLoader(){
+    stopVideo();
+    // убрать всё, кроме centerLoader
+    [...center.children].forEach(node=>{
+      if(node === centerLoader) return;
+      center.removeChild(node);
     });
-
-    // если кликнуть прямо по видео — тоже toggle (удобно)
-    v.addEventListener("click", (e)=>{
-      // только когда курсор внутри центра (чтобы не ловить лишние клики)
-      // и не мешать лоадеру/кнопкам
-      try{
-        if(v.paused) v.play();
-        else v.pause();
-      }catch(err){}
-      sync();
-    });
-
-    v.addEventListener("pause", sync);
-    v.addEventListener("play", sync);
-    v.addEventListener("playing", sync);
-
-    // при старте: пауза-иконка появится только на hover, но состояние держим
-    sync();
-    return b;
+    setCenterLoading(true);
   }
 
   function showCenter(el){
-    stopVideo();
+    clearCenterKeepLoader();
 
-    center.innerHTML = '<span class="rg-loading is-on" aria-hidden="true">loading...</span>';
     center.appendChild(soundHint);
 
     if(el.type==="video"){
@@ -456,12 +390,12 @@
       if(el.poster) v.poster=el.poster;
 
       v.autoplay=true;
-      v.muted=false;        // просим звук (может быть заблокирован)
+      v.muted=false;
       v.volume=1;
       v.loop=true;
       v.playsInline=true;
 
-      v.controls=false;     /* ✅ без панели */
+      v.controls=false;
       v.preload="auto";
 
       v.setAttribute("playsinline","");
@@ -469,21 +403,40 @@
       v.setAttribute("controlslist","nodownload noplaybackrate noremoteplayback");
       v.setAttribute("disablepictureinpicture","");
 
-      const ready = ()=>{
+      // ✅ критично: при долгой загрузке/столле лоадер должен ВКЛЮЧАТЬСЯ обратно
+      const showLoad = ()=> setCenterLoading(true);
+      const hideLoad = ()=>{
         v.classList.remove("is-loading");
-        setLoading(center,false);
+        setCenterLoading(false);
       };
-      v.addEventListener("loadeddata", ready, {once:true});
-      v.addEventListener("canplay", ready, {once:true});
-      v.addEventListener("playing", ready, {once:true});
-      v.onerror = ()=>{ v.classList.remove("is-loading"); setLoading(center,false); };
+
+      v.addEventListener("loadstart", showLoad);
+      v.addEventListener("stalled", showLoad);
+      v.addEventListener("waiting", showLoad);
+
+      // ✅ выключаем лоадер только когда реально есть кадр/проигрывание
+      v.addEventListener("loadeddata", hideLoad, {once:true});
+      v.addEventListener("canplay", hideLoad, {once:true});
+      v.addEventListener("playing", hideLoad, {once:true});
+      v.onerror = ()=>{ v.classList.remove("is-loading"); setCenterLoading(false); };
 
       center.appendChild(v);
       activeVideo=v;
 
-      // ✅ overlay pause/play (появляется на hover, и всегда виден когда paused)
-      activeOverlay = makeVideoOverlay(v);
-      center.appendChild(activeOverlay);
+      // ✅ невидимая пауза/плей по клику
+      const hit = document.createElement("button");
+      hit.type="button";
+      hit.className="rg-hit";
+      hit.setAttribute("aria-label","Pause / Play");
+      hit.onclick = async ()=>{
+        if(!activeVideo) return;
+        if(activeVideo.paused){
+          try{ await activeVideo.play(); }catch(e){}
+        }else{
+          try{ activeVideo.pause(); }catch(e){}
+        }
+      };
+      center.appendChild(hit);
 
       // пробуем autoplay со звуком, если не выйдет — запускаем muted и показываем кнопку
       const tryPlay = async ()=>{
@@ -523,8 +476,8 @@
     img.loading="eager";
     try{ img.fetchPriority="high"; }catch(e){}
 
-    img.onload=()=>{ img.classList.remove("is-loading"); setLoading(center,false); };
-    img.onerror=()=>{ img.classList.remove("is-loading"); setLoading(center,false); };
+    img.onload=()=>{ img.classList.remove("is-loading"); setCenterLoading(false); };
+    img.onerror=()=>{ img.classList.remove("is-loading"); setCenterLoading(false); };
 
     img.src=el.src;
     center.appendChild(img);
@@ -542,7 +495,7 @@
 
     setLoading(left.parentElement, true);
     setLoading(right.parentElement, true);
-    setLoading(center, true);
+    setCenterLoading(true);
 
     await Promise.all([
       preloadElement(elements[i], "high"),
