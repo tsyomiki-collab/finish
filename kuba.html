@@ -1,3 +1,8 @@
+
+лоадинг сохраняем пока видео не начнется на пару сек, ускорить загурзку видео, невидимая пауза при нажатии, не убираем аутоплей, убираем звук когда юзер выходит со страницы
+если белый экран со стрелками также чтобы был виден лоадинг 
+тап не убирать
+
 <div id="rg-gallery">
   <button class="rg-btn rg-prev" type="button" aria-label="Previous">⟨</button>
 
@@ -106,18 +111,8 @@
   object-fit:contain;
   background:transparent;
 
-  /* ✅ чтобы нельзя было тапом ставить на паузу по самому видео */
+  /* ✅ чтобы нельзя было тапом ставить на паузу */
   pointer-events:none;
-}
-
-/* ✅ невидимый слой для паузы/плея по тапу */
-.rg-tapPause{
-  position:absolute;
-  inset:0;
-  z-index:1;
-  pointer-events:auto;
-  background:transparent;
-  -webkit-tap-highlight-color:transparent;
 }
 
 /* loading... */
@@ -188,7 +183,7 @@
 
   border:1px solid rgba(0,0,0,.12);
   background:rgba(255,255,255,.92);
-  border-radius:999px;
+  border-radius:999px;   /* ✅ пилюля */
   color:#111;
 }
 
@@ -317,30 +312,12 @@
     right.style.visibility = h ? "hidden" : "visible";
   }
 
-  function hardMuteAndStopVideo(){
+  function stopVideo(){
     if(!activeVideo) return;
-    try{ activeVideo.muted = true; activeVideo.volume = 0; }catch(e){}
     try{ activeVideo.pause(); }catch(e){}
-    try{
-      activeVideo.removeAttribute("src");
-      activeVideo.load?.();
-    }catch(e){}
+    try{ activeVideo.removeAttribute("src"); activeVideo.load?.(); }catch(e){}
     activeVideo = null;
   }
-
-  function stopVideo(){
-    hardMuteAndStopVideo();
-  }
-
-  /* ✅ убираем звук/останавливаем, когда юзер уходит со страницы */
-  (function bindLeaveGuards(){
-    const kill = ()=>{ stopVideo(); };
-    window.addEventListener("pagehide", kill, {capture:true});
-    window.addEventListener("beforeunload", kill, {capture:true});
-    document.addEventListener("visibilitychange", ()=>{
-      if(document.visibilityState !== "visible") kill();
-    }, {capture:true});
-  })();
 
   function setSide(imgEl, item){
     const slot = imgEl.parentElement;
@@ -375,23 +352,17 @@
       v.playsInline = true;
       v.preload = "auto";
 
-      v.controls = false;
+      v.controls = false; // ✅ без панели
       v.setAttribute("playsinline", "");
       v.setAttribute("webkit-playsinline", "");
       v.setAttribute("controlslist", "nodownload noplaybackrate noremoteplayback");
       v.setAttribute("disablepictureinpicture", "");
-
-      const tapPause = document.createElement("div");
-      tapPause.className = "rg-tapPause";
-      tapPause.setAttribute("aria-label", "toggle pause");
-      tapPause.setAttribute("role", "button");
 
       const unmute = document.createElement("div");
       unmute.className = "rg-unmute";
       unmute.innerHTML = "<span>tap for sound</span>";
 
       center.appendChild(v);
-      center.appendChild(tapPause);
       center.appendChild(unmute);
       activeVideo = v;
 
@@ -404,19 +375,7 @@
       v.addEventListener("canplay", hideLoader, {once:true});
       v.onerror = ()=>{ hideLoader(); };
 
-      // ✅ невидимая пауза/плей по тапу
-      tapPause.addEventListener("click", async ()=>{
-        if(!activeVideo) return;
-        try{
-          if(activeVideo.paused){
-            await activeVideo.play();
-          }else{
-            activeVideo.pause();
-          }
-        }catch(e){}
-      });
-
-      // ✅ autoplay со звуком (best effort)
+      // ✅ autoplay со звуком (best effort): сначала muted=false
       const trySound = async ()=>{
         try{
           v.muted = false;
