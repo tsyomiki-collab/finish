@@ -148,22 +148,18 @@
   const navEl=center.querySelector(".rg-nav");
 
   let index=0, token=0, currentVideo=null;
+  let soundUnlocked=false;              // ✅ как во втором проекте
 
   const nodeCache=new Map();
   const readyCache=new Map();
   const ric = window.requestIdleCallback || ((cb)=>setTimeout(()=>cb({timeRemaining:()=>0}), 120));
 
-  // ✅ НОВОЕ: окно блокировки паузы после тапа по звуку
-  let pauseLockUntil = 0;
-  const PAUSE_LOCK_MS = 450;
-
   function keyOf(el){ return el.type==="video" ? ("v:"+el.src) : ("i:"+el.src); }
-
   function setLoading(on){ loadingEl.classList.toggle("is-on", !!on); }
 
-  // ✅ ИЗМЕНЕНО: needs-tap ещё и выключает pauseHit + (важно) не даёт ему поймать “первый тап”
   function setNeedsTap(on){
     center.classList.toggle("needs-tap", !!on);
+    // ✅ пока нужен tap — пауза выключена (и «первый клик» не перехватит пауза)
     pauseHit.style.pointerEvents = on ? "none" : "auto";
   }
 
@@ -213,6 +209,7 @@
 
     if(el.poster) v.poster=el.poster;
 
+    // стартуем безопасно (muted) — дальше попробуем включить звук smart
     v.muted=true;
     v.volume=0;
     v.setAttribute("muted","");
@@ -252,6 +249,19 @@
     return p;
   }
 
+  function hardMuteAndStop(v){
+    if(!v) return;
+    try{ v.muted=true; v.volume=0; v.setAttribute("muted",""); }catch(e){}
+    try{ v.pause(); }catch(e){}
+  }
+
+  function stopAllVideosNow(){
+    if(currentVideo) hardMuteAndStop(currentVideo);
+    for(const node of nodeCache.values()){
+      if(node && node.tagName==="VIDEO") hardMuteAndStop(node);
+    }
+  }
+
   function forceAutoplayMuted(v){
     let tries=0;
     const MAX=24;
@@ -281,86 +291,102 @@
     setTimeout(attempt, 600);
   }
 
-  async function tryEnableSound(v){
+  async function tryPlayWithSound(v){
     try{
       v.muted=false;
       v.volume=1;
       await v.play();
-      setNeedsTap(false);
       return true;
-    }catch(e){
-      setNeedsTap(true);
-      return false;
+    }catch(e){}
+    return false;
+  }
+
+  // ✅ как во втором проекте: если звук не разлочен — играем muted и показываем tap,
+  // а паузу выключаем, чтобы «первый клик» ушёл тапу.
+  async function startVideoSmart(v){
+    // пробуем со звуком (если уже разлочено — сразу ок)
+    if(soundUnlocked){
+      if(await tryPlayWithSound(v)){
+        setNeedsTap(false);
+        return true;
+      }
+    }else{
+      // иногда iOS разлочит звук с первого разрешённого жеста (tap) — тут не форсим
+      if(await tryPlayWithSound(v)){
+        soundUnlocked=true;
+        setNeedsTap(false);
+        return true;
+      }
     }
+
+    // fallback: muted autoplay
+    try{
+      v.muted=true;
+      v.volume=0;
+      v.setAttribute("muted","");
+      await v.play();
+    }catch(_){}
+    setNeedsTap(true);   // ✅ показываем tap, пауза выключена
+    return false;
   }
 
   async function unlockSound(){
     if(!currentVideo) return;
-    await tryEnableSound(currentVideo);
-  }
 
-  // ✅ НОВОЕ: жёсткая блокировка паузы на короткий период
-  function lockPauseNow(){
-    pauseLockUntil = Date.now() + PAUSE_LOCK_MS;
-    // на всякий случай физически выключаем на этот момент
-    pauseHit.style.pointerEvents = "none";
-    setTimeout(()=>{
-      // включаем обратно только если не needs-tap
-      if(!center.classList.contains("needs-tap")){
-        pauseHit.style.pointerEvents = "auto";
+    // ✅ только tap разлочивает звук
+    try{
+      soundUnlocked=true;
+      if(await tryPlayWithSound(currentVideo)){
+        setNeedsTap(false);
+      }else{
+        setNeedsTap(true);
       }
-    }, PAUSE_LOCK_MS);
+    }catch(e){
+      setNeedsTap(true);
+    }
   }
 
-  // ✅ ИЗМЕНЕНО: ловим ранний жест (pointerdown/touchstart) и сразу блокируем паузу
-  function tapGuard(e){
+  // ✅ tap должен «забрать» первый жест и не дать pauseHit/другим обработчикам сработать
+  function swallow(e){
+    e.preventDefault();
+    e.stopPropagation();
+    if(e.stopImmediatePropagation) e.stopImmediatePropagation();
+  }
+
+  tapBtn.addEventListener("pointerdown", (e)=>{
     if(!center.classList.contains("needs-tap")) return;
-    e.preventDefault();
-    e.stopPropagation();
-    if(e.stopImmediatePropagation) e.stopImmediatePropagation();
-    lockPauseNow();
-  }
-  tapBtn.addEventListener("pointerdown", tapGuard, true);
-  tapBtn.addEventListener("touchstart",  tapGuard, {passive:false, capture:true});
+    swallow(e);
+  }, true);
 
-  // ✅ ИЗМЕНЕНО: сам клик по тапу — тоже с блоком
-  tapBtn.addEventListener("click", (e)=>{
-    e.preventDefault();
-    e.stopPropagation();
-    if(e.stopImmediatePropagation) e.stopImmediatePropagation();
-    lockPauseNow();
-    unlockSound();
+  tapBtn.addEventListener("touchstart", (e)=>{
+    if(!center.classList.contains("needs-tap")) return;
+    swallow(e);
+  }, {passive:false, capture:true});
+
+  tapBtn.addEventListener("click", async (e)=>{
+    if(!center.classList.contains("needs-tap")) return;
+    swallow(e);
+    await unlockSound();
   });
 
-  // ✅ ИЗМЕНЕНО: pauseHit не реагирует, если мы в окне блокировки
-  pauseHit.addEventListener("click", (e)=>{
+  // ✅ невидимая пауза: работает только когда tap не нужен
+  pauseHit.addEventListener("click", async (e)=>{
     e.preventDefault();
     const v=currentVideo;
     if(!v) return;
 
     if(center.classList.contains("needs-tap")) return;
-    if(Date.now() < pauseLockUntil) return;
 
     if(v.paused){
-      const p=v.play();
-      if(p && typeof p.catch==="function") p.catch(()=>{});
+      // если вдруг звук разлочен — стартуем smart (со звуком), иначе будет muted+tap
+      await startVideoSmart(v);
     }else{
       try{ v.pause(); }catch(err){}
+      try{ v.muted=true; v.volume=0; v.setAttribute("muted",""); }catch(e2){}
+      // tap не показываем при паузе — как во втором проекте (только если автоплей со звуком запрещён)
+      if(!soundUnlocked) setNeedsTap(true);
     }
   });
-
-  function hardMuteAndStop(v){
-    if(!v) return;
-    try{ v.muted=true; v.volume=0; v.setAttribute("muted",""); }catch(e){}
-    try{ v.pause(); }catch(e){}
-  }
-
-  function stopAllVideosNow(){
-    if(currentVideo) hardMuteAndStop(currentVideo);
-    for(const node of nodeCache.values()){
-      if(node && node.tagName==="VIDEO") hardMuteAndStop(node);
-    }
-  }
 
   function showCenter(el){
     clearCenterKeepUI();
@@ -384,13 +410,11 @@
 
     setHasVideo(true);
 
+    // ✅ сначала гарантируем, что хоть muted autoplay стартанёт быстро
     forceAutoplayMuted(v);
 
-    setTimeout(()=>{ if(currentVideo===v) tryEnableSound(v); }, 120);
-
-    gallery.addEventListener("pointerdown", unlockSound, {once:true, passive:true, capture:true});
-    gallery.addEventListener("touchstart", unlockSound, {once:true, passive:true, capture:true});
-    window.addEventListener("keydown", unlockSound, {once:true, capture:true});
+    // ✅ затем — логика как во втором проекте: либо со звуком, либо tap+блок паузы
+    setTimeout(()=>{ if(currentVideo===v) startVideoSmart(v); }, 80);
   }
 
   function preloadAround(i){
@@ -438,12 +462,14 @@
     if(Math.abs(d)>40){ d<0?show(index+1):show(index-1) }
   },{passive:true});
 
+  // ✅ уход со страницы/сворачивание: звук убирается
   document.addEventListener("visibilitychange", ()=>{
     if(document.hidden) stopAllVideosNow();
     else if(!document.hidden && currentVideo) forceAutoplayMuted(currentVideo);
   });
   window.addEventListener("pagehide", stopAllVideosNow, {capture:true});
   window.addEventListener("beforeunload", stopAllVideosNow, {capture:true});
+  window.addEventListener("blur", ()=>{ if(document.hidden) return; stopAllVideosNow(); }, {capture:true});
 
   preloadAround(0);
   show(0);
