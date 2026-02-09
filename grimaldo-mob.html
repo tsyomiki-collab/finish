@@ -33,7 +33,7 @@
 #rg-gallery{position:fixed;inset:0;background:#fcfcfc;z-index:9999;overflow:hidden}
 #rg-stage{position:absolute;inset:0;top:-60px;display:flex;align-items:center;justify-content:center;pointer-events:none}
 
-/* ✅ размеры ВЗЯТЫ ОТСЮДА */
+/* размеры как у тебя */
 #rg-center{
   width:92vw;max-width:560px;
   height:64vh;max-height:640px;
@@ -56,7 +56,7 @@
 }
 #rg-center.is-loading .rg-loading{display:block}
 
-/* ✅ невидимая пауза/плей */
+/* невидимая пауза/плей */
 .rg-hit{
   position:absolute;inset:0;
   border:0;padding:0;margin:0;
@@ -100,7 +100,7 @@
     }
   ];
 
-  // ---------- УСКОРЕНИЕ ЧЕРЕЗ CLOUDINARY FETCH (картинки + постер) ----------
+  // ---------- УСКОРЕНИЕ (картинки + постер через fetch) ----------
   const CLOUD="dmtnse4sz";
   const DPR=Math.max(1, Math.min(3, window.devicePixelRatio||1));
   const centerPx = Math.min(560, Math.round(window.innerWidth * 0.92));
@@ -111,9 +111,24 @@
     return `https://res.cloudinary.com/${CLOUD}/image/fetch/f_auto,q_auto:good,fl_progressive,fl_lossy,w_${w}/${encodeURIComponent(url)}`;
   }
 
+  // ✅ УСКОРЕНИЕ ВИДЕО: отдаём mp4/h264+q_auto вместо тяжёлого .mov (Cloudinary сделает дериватив)
+  // Просто вставляем трансформации после /video/upload/
+  function cldFastVideo(url){
+    if(!url || typeof url !== "string") return url;
+    if(url.indexOf("/video/upload/") === -1) return url;
+    // f_auto часто даст mp4/webm по браузеру; для совместимости iOS полезно принудить mp4/h264
+    // (Cloudinary синтаксис: .../video/upload/<transforms>/<public_id>.<ext>)
+    const transforms = "f_mp4,vc_h264,ac_aac,q_auto";
+    return url.replace("/video/upload/", `/video/upload/${transforms}/`);
+  }
+
   const fast = elements.map(el=>{
     if(el.type === "img") return { ...el, src: cldFetchImg(el.src, W_IMG) };
-    if(el.type === "video") return { ...el, poster: el.poster ? cldFetchImg(el.poster, W_POSTER) : "" };
+    if(el.type === "video") return {
+      ...el,
+      src: cldFastVideo(el.src),
+      poster: el.poster ? cldFetchImg(el.poster, W_POSTER) : ""
+    };
     return el;
   });
 
@@ -170,6 +185,7 @@
     v.setAttribute("disablePictureInPicture","");
     v.setAttribute("disableRemotePlayback","");
 
+    // просим звук
     v.muted = false;
     v.volume = 1;
 
@@ -197,6 +213,7 @@
         img.onload = done;
         img.onerror = done;
       } else {
+        // Видео: метаданные + постер
         if(el.poster) ensureReady({type:"img", src: el.poster});
         const v = document.createElement("video");
         v.preload="metadata";
@@ -226,15 +243,15 @@
 
   // ---------- AUTOPLAY / SOUND / LEAVE PAGE ----------
   let currentVideo = null;
-  let progressWatchStop = null;
+  let stopWatch = null;
 
-  function stopProgressWatch(){
-    if(progressWatchStop){ try{ progressWatchStop(); }catch(e){} }
-    progressWatchStop = null;
+  function stopWatching(){
+    if(stopWatch){ try{ stopWatch(); }catch(e){} }
+    stopWatch = null;
   }
 
   function stopCurrentVideoHard(){
-    stopProgressWatch();
+    stopWatching();
     if(!currentVideo) return;
     try{ currentVideo.pause(); }catch(e){}
     try{ currentVideo.muted = true; }catch(e){}
@@ -242,6 +259,7 @@
     currentVideo = null;
   }
 
+  // ✅ если выйти/скрыть страницу — звук исчезает
   const stopOnLeave = ()=>{ stopCurrentVideoHard(); };
   window.addEventListener("pagehide", stopOnLeave, {capture:true});
   window.addEventListener("beforeunload", stopOnLeave, {capture:true});
@@ -258,21 +276,24 @@
   }
 
   async function startVideoSmart(v){
+    // 1) пробуем со звуком
     if(await tryPlayWithSound(v)) return true;
+
+    // 2) если заблокировали — запускаем muted (чтобы хоть шло)
     v.muted = true;
     v.volume = 0;
     try{ await v.play(); }catch(e){}
     return false;
   }
 
-  // ✅ ключевой фикс: держим loading, пока видео реально НЕ ПОШЛО (в т.ч. если виден только постер 10s)
-  function watchVideoProgress(v){
-    let killed = false;
+  // ✅ ключ: держим loading, пока видео реально НЕ начало идти (не постер!)
+  function watchUntilActuallyPlays(v){
+    let killed=false;
     let lastT = v.currentTime || 0;
-    let started = false;
-    let timer = null;
+    let started=false;
+    let timer=null;
 
-    const markStarted = ()=>{
+    const finish = ()=>{
       if(started) return;
       started = true;
       setLoading(false);
@@ -281,49 +302,41 @@
 
     const tick = ()=>{
       if(killed) return;
-      const ct = v.currentTime || 0;
 
-      // если время двигается — видео реально идёт
+      // если пошёл таймкод — видео реально играет
+      const ct = v.currentTime || 0;
       if(ct > lastT + 0.02){
-        markStarted();
+        finish();
         return;
       }
 
-      // если пауза — пусть остаётся как есть (не мигаем)
-      // но если “пытается играть” и буферится — держим loading
-      if(!v.paused && (v.readyState < 3)) setLoading(true);
+      // если не стартовало — лоадинг держим всегда
+      if(!started) setLoading(true);
 
       lastT = ct;
     };
 
-    const onPlaying = ()=>{ markStarted(); };
-    const onTime = ()=>{ markStarted(); };
+    const onPlaying = ()=>finish();
+    const onTime = ()=>finish();
     const onWaiting = ()=>{ if(!started) setLoading(true); };
     const onStalled = ()=>{ if(!started) setLoading(true); };
-    const onSeeking = ()=>{ if(!started) setLoading(true); };
-    const onCanPlay = ()=>{ /* не скрываем здесь! */ };
 
     v.addEventListener("playing", onPlaying);
     v.addEventListener("timeupdate", onTime);
     v.addEventListener("waiting", onWaiting);
     v.addEventListener("stalled", onStalled);
-    v.addEventListener("seeking", onSeeking);
-    v.addEventListener("canplay", onCanPlay);
 
-    // стартуем контроль (чтобы ловить “постер висит 10 секунд”)
     setLoading(true);
     timer = setInterval(tick, 250);
 
     function cleanup(){
       if(killed) return;
-      killed = true;
+      killed=true;
       if(timer) clearInterval(timer);
       v.removeEventListener("playing", onPlaying);
       v.removeEventListener("timeupdate", onTime);
       v.removeEventListener("waiting", onWaiting);
       v.removeEventListener("stalled", onStalled);
-      v.removeEventListener("seeking", onSeeking);
-      v.removeEventListener("canplay", onCanPlay);
     }
 
     return cleanup;
@@ -340,11 +353,13 @@
     hit.onclick = async ()=>{
       if(!currentVideo) return;
       if(currentVideo.paused){
-        setLoading(true); // если юзер нажал play — покажем loading, пока не пошло
+        // если юзер нажал play — покажем loading до реального старта
+        stopWatching();
+        stopWatch = watchUntilActuallyPlays(currentVideo);
         try{ await currentVideo.play(); }catch(e){}
       }else{
         try{ currentVideo.pause(); }catch(e){}
-        // loading не включаем при паузе (чтобы не путать)
+        // при паузе лоадинг не включаем, чтобы не путать
       }
     };
     return hit;
@@ -358,15 +373,9 @@
 
     if(el.type === "img"){
       const img = ensureImg(el.src);
-
       const finish = ()=>setLoading(false);
-      if(img.complete){
-        setLoading(false);
-      }else{
-        img.onload = finish;
-        img.onerror = finish;
-      }
-
+      if(img.complete) setLoading(false);
+      else { img.onload = finish; img.onerror = finish; }
       center.insertBefore(img, nav);
       return;
     }
@@ -374,16 +383,17 @@
     const v = ensureVideo(el);
     currentVideo = v;
 
-    // вставляем видео + невидимую паузу
     center.insertBefore(v, nav);
     center.insertBefore(ensureHit(), nav);
 
-    // ✅ лоадер держим до реального старта
-    stopProgressWatch();
-    progressWatchStop = watchVideoProgress(v);
+    // держим лоадинг до реального движения видео
+    stopWatching();
+    stopWatch = watchUntilActuallyPlays(v);
 
-    // если сеть/буфер — всегда включаем обратно
+    // если сеть шалит — не даём лоадеру пропасть
     v.addEventListener("loadstart", ()=>setLoading(true));
+    v.addEventListener("waiting", ()=>setLoading(true));
+    v.addEventListener("stalled", ()=>setLoading(true));
     v.addEventListener("error", ()=>setLoading(false), {once:true});
 
     startVideoSmart(v);
@@ -412,7 +422,6 @@
   prevBtn.onclick = ()=>show(index-1);
   nextBtn.onclick = ()=>show(index+1);
 
-  // старт
   preloadAround(0);
   show(0);
 })();
