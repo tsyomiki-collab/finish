@@ -18,7 +18,6 @@
   </div>
 </div>
 
-<!-- прогрев соединений -->
 <link rel="dns-prefetch" href="//raw.githubusercontent.com">
 <link rel="preconnect" href="https://raw.githubusercontent.com" crossorigin>
 <link rel="dns-prefetch" href="//res.cloudinary.com">
@@ -63,7 +62,7 @@
 }
 #rg-center.is-loading .rg-loading{display:block}
 
-/* ✅ tap to screen (как в твоём блоке) */
+/* ✅ tap to screen */
 .rg-tap{
   position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
   z-index:6;display:none;pointer-events:auto;cursor:pointer;
@@ -76,7 +75,7 @@
 }
 #rg-center.needs-tap .rg-tap{display:block}
 
-/* ✅ НЕВИДИМАЯ пауза (прозрачная, без иконки) */
+/* ✅ НЕВИДИМАЯ пауза */
 .rg-pause{
   position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
   width:100%;height:100%;
@@ -117,7 +116,7 @@
     {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/in-my-room-2/main/Screenshot%202026-01-31%20at%2014.44.08.png"}
   ];
 
-  // ---------- УСКОРЕНИЕ ЧЕРЕЗ CLOUDINARY FETCH (картинки + постер) ----------
+  // ---------- CLOUDINARY FETCH ----------
   const CLOUD="dmtnse4sz";
   const DPR=Math.max(1, Math.min(3, window.devicePixelRatio||1));
   const centerPx = Math.min(560, Math.round(window.innerWidth * 0.92));
@@ -134,17 +133,14 @@
     return el;
   });
 
-  // ---------- ЛОАДИНГ / TAP / VIDEO FLAG ----------
+  // ---------- UI FLAGS ----------
   function setLoading(on){ center.classList.toggle("is-loading", !!on); }
   function setHasVideo(on){ center.classList.toggle("has-video", !!on); }
-
-  // ✅ как во “втором проекте”: пока нужен tap — пауза выключена (первый клик блокируется)
   function setNeedsTap(on){
     center.classList.toggle("needs-tap", !!on);
     pauseBtn.style.pointerEvents = on ? "none" : "auto";
   }
 
-  // оставляем UI (loading + tap + pause + nav), меняем только контент
   function clearCenterKeepUI(){
     const nav = center.querySelector(".rg-nav");
     const load = center.querySelector(".rg-loading");
@@ -157,10 +153,9 @@
     if(nav) center.appendChild(nav);
   }
 
-  // ---------- КЭШ НОД + READY ----------
+  // ---------- CACHE ----------
   const nodeCache = new Map();
   const readyCache = new Map();
-  const ric = window.requestIdleCallback || ((cb)=>setTimeout(()=>cb({timeRemaining:()=>0}), 120));
 
   function keyOf(el){ return el.type==="video" ? ("v:"+el.src) : ("i:"+el.src); }
 
@@ -198,7 +193,6 @@
     v.setAttribute("disablePictureInPicture","");
     v.setAttribute("disableRemotePlayback","");
 
-    // ✅ стартуем безопасно: muted (а звук включаем только после tap)
     v.muted = true;
     v.volume = 0;
     v.setAttribute("muted","");
@@ -239,7 +233,7 @@
     return p;
   }
 
-  // ---------- ЗВУК / AUTOPLAY SMART ----------
+  // ---------- SOUND ----------
   let soundUnlocked = false;
   let currentVideo = null;
 
@@ -258,14 +252,12 @@
     try{ await v.play(); }catch(e){}
   }
 
-  // ✅ как во втором: пытаемся со звуком, если нельзя — muted + показываем tap + блок паузы
   async function startVideoSmart(v){
     setNeedsTap(false);
 
     if(soundUnlocked){
       if(await tryPlayWithSound(v)) return true;
     }else{
-      // иногда браузер может разрешить звук (после уже разлоченного контекста)
       if(await tryPlayWithSound(v)){
         soundUnlocked = true;
         return true;
@@ -273,7 +265,7 @@
     }
 
     await startMuted(v);
-    setNeedsTap(true);     // ✅ пауза выключится через pointer-events:none
+    setNeedsTap(true);
     return false;
   }
 
@@ -282,22 +274,18 @@
     if(!v) return;
     soundUnlocked = true;
 
-    // ✅ важно: сначала “переводим” UI в режим без tap и включаем паузу
     setNeedsTap(false);
 
-    // ✅ затем включаем звук
     try{
       v.muted = false;
       v.removeAttribute("muted");
       v.volume = 1;
       await v.play();
     }catch(e){
-      // если всё равно не дали — возвращаем tap+блок паузы
       setNeedsTap(true);
     }
   }
 
-  // ✅ уход/сворачивание: звук пропадает гарантированно
   function silenceNow(){
     const v = currentVideo;
     if(!v) return;
@@ -305,26 +293,22 @@
     try{ v.muted = true; v.volume = 0; v.setAttribute("muted",""); }catch(e){}
   }
 
-  // ---------- PAUSE (НЕВИДИМАЯ) ----------
+  // ---------- PAUSE ----------
   pauseBtn.addEventListener("click", async (e)=>{
     e.preventDefault();
     const v = currentVideo;
     if(!v) return;
-
-    // ✅ пока нужен tap — пауза не работает вообще
     if(center.classList.contains("needs-tap")) return;
 
     if(v.paused){
-      // если звук уже разлочен — будет со звуком, иначе уйдёт в muted+tap
       await startVideoSmart(v);
     }else{
       try{ v.pause(); }catch(_){}
       try{ v.muted = true; v.volume = 0; v.setAttribute("muted",""); }catch(_){}
-      // tap не показываем при паузе (как во втором), только если потом нужен будет разлок
     }
   });
 
-  // ---------- TAP: забирает первый жест на себя (чтобы ничего не перехватило) ----------
+  // ---------- TAP: НЕ ДАЁМ ЖЕСТУ СТАТЬ СВАЙПОМ ----------
   function swallow(e){
     e.preventDefault();
     e.stopPropagation();
@@ -341,19 +325,19 @@
     swallow(e);
   }, {passive:false, capture:true});
 
+  tapBtn.addEventListener("touchend", (e)=>{
+    if(!center.classList.contains("needs-tap")) return;
+    swallow(e);
+  }, {passive:false, capture:true});
+
   tapBtn.addEventListener("click", async (e)=>{
     if(!center.classList.contains("needs-tap")) return;
     swallow(e);
     await unlockSoundNow();
   });
 
-  // ❌ УБРАЛ global unlock (pointerdown по gallery), потому что ты просила:
-  // “первое нажатие блокируется чтобы дать право тапу разблокировать звук”
-  // (т.е. разлочиваем ТОЛЬКО через кнопку tap)
-
   // ---------- MOUNT ----------
-  let index = 0;
-  let token = 0;
+  let index = 0, token = 0;
 
   function stopCurrentVideo(){
     if(!currentVideo) return;
@@ -373,12 +357,8 @@
       const img = ensureImg(el.src);
       const finish = ()=>setLoading(false);
 
-      if(img.complete){
-        setLoading(false);
-      }else{
-        img.onload = finish;
-        img.onerror = finish;
-      }
+      if(img.complete) setLoading(false);
+      else { img.onload = finish; img.onerror = finish; }
 
       center.insertBefore(img, center.querySelector(".rg-nav"));
       return;
@@ -400,17 +380,9 @@
 
   function preloadAround(i){
     const n = fast.length;
-    const prev = (i-1+n)%n;
-    const next = (i+1+n)%n;
-
-    ensureReady(fast[i]);
-    ensureReady(fast[prev]);
-    ensureReady(fast[next]);
-
-    ric(()=>{
-      ensureReady(fast[(prev-1+n)%n]);
-      ensureReady(fast[(next+1+n)%n]);
-    });
+    ensureReady(fast[(i+n)%n]);
+    ensureReady(fast[(i-1+n)%n]);
+    ensureReady(fast[(i+1)%n]);
   }
 
   async function show(i){
@@ -429,18 +401,34 @@
     mount(fast[i]);
   }
 
-  // ---------- UI EVENTS ----------
   prevBtn.onclick = ()=>show(index-1);
   nextBtn.onclick = ()=>show(index+1);
 
-  let startX=0;
-  gallery.addEventListener("touchstart",e=>{startX=e.touches[0].clientX},{passive:true});
-  gallery.addEventListener("touchend",e=>{
-    const d=e.changedTouches[0].clientX-startX;
-    if(Math.abs(d)>40){ d<0?show(index+1):show(index-1); }
-  },{passive:true});
+  // ✅ FIX: “железный” свайп (тап ≠ свайп)
+  let sx=0, sy=0, dx=0, dy=0, moved=false;
 
-  // ✅ уход/сворачивание/переключение: сразу mute+pause
+  gallery.addEventListener("touchstart", (e)=>{
+    const t = e.touches[0];
+    sx = t.clientX; sy = t.clientY;
+    dx = 0; dy = 0;
+    moved = false;
+  }, {passive:true});
+
+  gallery.addEventListener("touchmove", (e)=>{
+    const t = e.touches[0];
+    dx = t.clientX - sx;
+    dy = t.clientY - sy;
+    if(Math.abs(dx) > 10 || Math.abs(dy) > 10) moved = true;
+  }, {passive:true});
+
+  gallery.addEventListener("touchend", ()=>{
+    if(!moved) return;                      // тап
+    if(Math.abs(dx) <= Math.abs(dy)) return; // вертикаль — игнор
+    if(Math.abs(dx) < 70) return;           // порог
+    dx < 0 ? show(index+1) : show(index-1);
+  }, {passive:true});
+
+  // уход: звук убирается
   document.addEventListener("visibilitychange", ()=>{
     if(document.hidden) silenceNow();
     else if(currentVideo) startVideoSmart(currentVideo);
@@ -449,7 +437,6 @@
   window.addEventListener("beforeunload", silenceNow, {capture:true});
   window.addEventListener("blur", ()=>{ if(document.hidden) return; silenceNow(); }, {capture:true});
 
-  // старт
   preloadAround(0);
   show(0);
 })();
