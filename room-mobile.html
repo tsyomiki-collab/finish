@@ -136,8 +136,14 @@
 
   // ---------- ЛОАДИНГ / TAP / VIDEO FLAG ----------
   function setLoading(on){ center.classList.toggle("is-loading", !!on); }
-  function setNeedsTap(on){ center.classList.toggle("needs-tap", !!on); }
   function setHasVideo(on){ center.classList.toggle("has-video", !!on); }
+
+  // ✅ управляем нужностью тап-а и блокировкой паузы
+  function setNeedsTap(on){
+    center.classList.toggle("needs-tap", !!on);
+    // пока показан tap-for-sound — пауза не должна ловить клики
+    pauseBtn.style.pointerEvents = on ? "none" : "auto";
+  }
 
   // оставляем UI (loading + tap + pause + nav), меняем только контент
   function clearCenterKeepUI(){
@@ -256,13 +262,13 @@
     v.volume = 0;
     try{ await v.play(); }catch(e){}
 
-    setNeedsTap(true);
+    setNeedsTap(true);   // ✅ тут автоматически выключаем pause (pointer-events:none)
     return false;
   }
 
   async function unlockSoundNow(){
     soundUnlocked = true;
-    setNeedsTap(false);
+    setNeedsTap(false);  // ✅ тут автоматически включаем pause обратно
     const v = currentVideo;
     if(!v) return;
     v.muted = false;
@@ -286,10 +292,8 @@
     if(!v) return;
 
     if(v.paused){
-      // play: умно (со звуком если можно)
       await startVideoSmart(v);
     }else{
-      // pause: и сразу убираем звук
       v.pause();
       v.muted = true;
       v.volume = 0;
@@ -385,7 +389,13 @@
     if(Math.abs(d)>40){ d<0?show(index+1):show(index-1); }
   },{passive:true});
 
-  tapBtn.addEventListener("click", (e)=>{ e.preventDefault(); unlockSoundNow(); });
+  // ✅ важное: тап по “tap for sound” НЕ должен долетать до pause
+  tapBtn.addEventListener("click", (e)=>{
+    e.preventDefault();
+    e.stopPropagation();
+    if(e.stopImmediatePropagation) e.stopImmediatePropagation();
+    unlockSoundNow();
+  });
 
   // любой первый жест разлочит звук (если возможно)
   (function armGlobalUnlock(){
