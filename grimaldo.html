@@ -234,12 +234,22 @@
 
   function stopVideo(){
     if(!activeVideo) return;
+    try{ activeVideo.muted = true; }catch(e){}
     try{ activeVideo.pause(); }catch(e){}
     try{ activeVideo.removeAttribute("src"); activeVideo.load?.(); }catch(e){}
     activeVideo=null;
     gallery.classList.remove("rg-needsTap");
     soundHint.style.display="none";
   }
+
+  /* ✅ ВАЖНО: если ушли со страницы/вкладки/скрыли iframe — звук пропадает */
+  const hardStop = ()=> stopVideo();
+  window.addEventListener("pagehide", hardStop, {capture:true});
+  window.addEventListener("beforeunload", hardStop, {capture:true});
+  window.addEventListener("blur", hardStop, {capture:true});
+  document.addEventListener("visibilitychange", ()=>{
+    if(document.hidden) hardStop();
+  }, {capture:true});
 
   /* ✅ PATCH: <link rel="preload"> для первых картинок/постеров (ускоряет старт и “первый кадр”) */
   try{
@@ -364,6 +374,23 @@
       v.setAttribute("webkit-playsinline","");
       v.setAttribute("controlslist","nodownload noplaybackrate noremoteplayback");
       v.setAttribute("disablepictureinpicture","");
+
+      // ✅ автоплей всегда, но паузу можно нажать ТОЛЬКО при наведении (hover)
+      // по умолчанию клики по видео отключены
+      v.style.pointerEvents = "none";
+
+      // включаем клики только когда курсор внутри центра
+      // (на тач-устройствах hover обычно нет — там пауза не будет доступна, как ты и хотела)
+      center.onmouseenter = ()=>{ if(activeVideo) activeVideo.style.pointerEvents = "auto"; };
+      center.onmouseleave = ()=>{ if(activeVideo) activeVideo.style.pointerEvents = "none"; };
+
+      // клик по видео (только при hover, т.к. иначе pointer-events:none)
+      v.addEventListener("click", (e)=>{
+        e.preventDefault();
+        e.stopPropagation();
+        if(v.paused) v.play().catch(()=>{});
+        else v.pause();
+      }, {passive:false});
 
       // ✅ когда реально пошёл кадр — выключаем loading
       const ready = ()=>{
