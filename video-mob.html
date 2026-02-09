@@ -108,7 +108,7 @@
   z-index:4;
   pointer-events:auto;
   -webkit-tap-highlight-color:transparent;
-  touch-action:manipulation; /* не обяз, но помогает */
+  touch-action:manipulation;
 }
 .rg-pause.is-on{display:block}
 </style>
@@ -347,7 +347,9 @@
       e.preventDefault();
       const v=currentVideo;
       if(!v) return;
-      if(center.classList.contains("needs-tap")) return;
+
+      // пока нужен tap-for-sound — пауза выключена
+      if(unmuteEl.classList.contains("is-on")) return;
 
       if(v.paused){
         await startVideoSmart(v);
@@ -381,36 +383,48 @@
   prevBtn.onclick=()=>show(index-1);
   nextBtn.onclick=()=>show(index+1);
 
-  // ---------------------------
-  // ✅ ANTI-SWIPE ON VIDEO CLICK
-  // ---------------------------
+  // ---------------------------------------
+  // ✅ БЛОКИРОВКА ПЕРВОГО ТАПА / ANTI-SWIPE
+  // ---------------------------------------
   function stopOnly(e){
     e.stopPropagation();
     if(e.stopImmediatePropagation) e.stopImmediatePropagation();
   }
 
-  // когда видео активно — любые touchstart/end по зоне паузы глушим,
-  // чтобы они не дошли до gallery и не сделали свайп
-  pauseBtn.addEventListener("touchstart", (e)=>{ if(currentVideo) stopOnly(e); }, {passive:true, capture:true});
-  pauseBtn.addEventListener("touchend",   (e)=>{ if(currentVideo) stopOnly(e); }, {passive:true, capture:true});
-  pauseBtn.addEventListener("pointerdown",(e)=>{ if(currentVideo) stopOnly(e); }, true);
-  pauseBtn.addEventListener("pointerup",  (e)=>{ if(currentVideo) stopOnly(e); }, true);
+  // глушим "протекание" на первом касании по тап-пилюле (без preventDefault)
+  unmuteEl.addEventListener("pointerdown",(e)=>{
+    if(!unmuteEl.classList.contains("is-on")) return;
+    stopOnly(e);
+  }, true);
 
-  // и для тап-пилюли тоже (чтобы не свайпало)
-  unmuteEl.addEventListener("touchstart",(e)=>{ if(unmuteEl.classList.contains("is-on")) stopOnly(e); }, {passive:true, capture:true});
-  unmuteEl.addEventListener("touchend",  (e)=>{ if(unmuteEl.classList.contains("is-on")) stopOnly(e); }, {passive:true, capture:true});
-  unmuteEl.addEventListener("pointerdown",(e)=>{ if(unmuteEl.classList.contains("is-on")) stopOnly(e); }, true);
-  unmuteEl.addEventListener("pointerup",(e)=>{ if(unmuteEl.classList.contains("is-on")) stopOnly(e); }, true);
+  unmuteEl.addEventListener("touchstart",(e)=>{
+    if(!unmuteEl.classList.contains("is-on")) return;
+    stopOnly(e);
+  }, {passive:true, capture:true});
 
-  // свайп (оставляем, но он не будет срабатывать при тапе по видео-зоне)
-  let startX=0;
-  gallery.addEventListener("touchstart",e=>{startX=e.touches[0].clientX},{passive:true});
-  gallery.addEventListener("touchend",e=>{
-    const d=e.changedTouches[0].clientX-startX;
-    if(Math.abs(d)>40){ d<0?show(index+1):show(index-1) }
-  },{passive:true});
+  // свайп (ЖЁСТКИЙ): если тач начался внутри центра — свайпа нет
+  let startX = 0;
+  let swipeAllowed = true;
 
-  // анмьют строго в click
+  gallery.addEventListener("touchstart", (e)=>{
+    startX = e.touches[0].clientX;
+
+    // ✅ если тач начался в центре (видео/пауза/тап) — свайп запрещён
+    swipeAllowed = !center.contains(e.target);
+
+    // ✅ если виден tap-for-sound — свайп запрещён 100%
+    if(unmuteEl.classList.contains("is-on")) swipeAllowed = false;
+  }, {passive:true});
+
+  gallery.addEventListener("touchend", (e)=>{
+    if(!swipeAllowed) return;
+    const d = e.changedTouches[0].clientX - startX;
+    if(Math.abs(d) > 40){
+      d < 0 ? show(index+1) : show(index-1);
+    }
+  }, {passive:true});
+
+  // ✅ анмьют строго в click (gesture)
   unmuteEl.addEventListener("click", async (e)=>{
     if(!unmuteEl.classList.contains("is-on")) return;
     e.preventDefault();
@@ -426,6 +440,7 @@
     }
   });
 
+  // уход/сворачивание: звук пропадает
   document.addEventListener("visibilitychange", ()=>{
     if(document.hidden) silenceNow();
     else if(currentVideo) startVideoSmart(currentVideo);
