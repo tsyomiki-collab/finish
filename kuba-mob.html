@@ -41,12 +41,18 @@
   width:86vw;max-width:520px;
   height:62vh;max-height:560px;
   display:flex;align-items:center;justify-content:center;
-  position:relative;pointer-events:none
+  position:relative;
+
+  pointer-events:auto; /* ✅ NEW: иначе ни пауза, ни tap не кликаются */
 }
 
 .rg-main{max-width:100%;max-height:100%;object-fit:contain;display:block;pointer-events:auto}
 
-.rg-nav{position:absolute;left:50%;bottom:-65px;transform:translateX(-50%);display:flex;gap:25px;pointer-events:auto}
+.rg-nav{
+  position:absolute;left:50%;bottom:-65px;transform:translateX(-50%);
+  display:flex;gap:25px;pointer-events:auto;
+  z-index:6; /* ✅ NEW: чтобы стрелки всегда были поверх невидимой паузы */
+}
 .rg-btn{font-size:1.6rem;background:none;border:none;color:#666;cursor:pointer;padding:4px 8px;user-select:none;-webkit-tap-highlight-color:transparent}
 
 /* LOADING (mix-blend) */
@@ -64,13 +70,14 @@
   pointer-events:none;
   user-select:none;
   display:none;
+  z-index:2;
 }
 .rg-loading.is-on{display:block}
 
 /* ✅ TAP — 1:1 как в in my room */
 .rg-tap{
   position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
-  z-index:5;
+  z-index:7;
   display:none;
   pointer-events:auto;
   cursor:pointer;
@@ -91,11 +98,11 @@
 }
 #rg-center.needs-tap .rg-tap{display:block}
 
-/* ✅ NEW: невидимый слой для play/pause по тапу */
+/* ✅ NEW: невидимая пауза — перекрывает ВСЮ площадь видео/слота */
 .rg-pauseTap{
   position:absolute;
   inset:0;
-  z-index:4;                 /* ниже .rg-tap (5), выше видео */
+  z-index:5;               /* ниже tap(7) и nav(6), выше видео */
   background:transparent;
   pointer-events:auto;
   -webkit-tap-highlight-color:transparent;
@@ -284,7 +291,7 @@
   }
   tapBtn.addEventListener("click", (e)=>{ e.preventDefault(); unlockSound(); });
 
-  // ✅ NEW: “уход со страницы” = звук исчезает железно
+  // ✅ когда уходим — звук исчезает
   function killAudioOnLeave(){
     if(!currentVideo) return;
     try{ currentVideo.pause(); }catch(e){}
@@ -293,7 +300,6 @@
       currentVideo.volume = 0;
       currentVideo.setAttribute("muted","");
     }catch(e){}
-    // жёстко отпускаем декодер/аудио-канал (особенно полезно в iframe)
     try{
       currentVideo.removeAttribute("src");
       currentVideo.load && currentVideo.load();
@@ -301,34 +307,32 @@
     currentVideo = null;
     setNeedsTap(false);
   }
-
   document.addEventListener("visibilitychange", ()=>{
     if(document.hidden) killAudioOnLeave();
   }, {passive:true});
   window.addEventListener("pagehide", killAudioOnLeave, {passive:true});
   window.addEventListener("beforeunload", killAudioOnLeave, {passive:true});
 
-  // ✅ NEW: невидимая пауза по тапу (по слою поверх видео)
-  function attachInvisiblePause(tapLayer, v){
-    tapLayer.addEventListener("click", (e)=>{
+  // ✅ невидимая пауза по всей площади видео/слота
+  function attachInvisiblePause(layer, v){
+    const toggle = (e)=>{
       e.preventDefault();
       e.stopPropagation();
       if(!v) return;
       try{
-        if(v.paused){
-          v.play().catch(()=>{});
-        }else{
-          v.pause();
-        }
+        if(v.paused) v.play().catch(()=>{});
+        else v.pause();
       }catch(err){}
-    }, {passive:false});
+    };
+    layer.addEventListener("pointerdown", toggle, {passive:false});
+    layer.addEventListener("touchstart", toggle, {passive:false});
+    layer.addEventListener("click", toggle, {passive:false});
   }
 
   function showCenter(el){
     clearCenterKeepUI();
     setNeedsTap(false);
 
-    // если было видео — прибиваем звук/ресурсы
     if(currentVideo){
       killAudioOnLeave();
     }
@@ -343,11 +347,11 @@
     center.insertBefore(v, navEl);
     currentVideo=v;
 
-    // ✅ NEW: слой для play/pause
-    const pauseTap=document.createElement("div");
-    pauseTap.className="rg-pauseTap";
-    center.insertBefore(pauseTap, navEl);
-    attachInvisiblePause(pauseTap, v);
+    // слой паузы — на всю площадь
+    const pauseLayer=document.createElement("div");
+    pauseLayer.className="rg-pauseTap";
+    center.insertBefore(pauseLayer, navEl);
+    attachInvisiblePause(pauseLayer, v);
 
     forceAutoplayMuted(v);
 
