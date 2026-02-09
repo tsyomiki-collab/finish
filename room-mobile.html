@@ -68,6 +68,7 @@
   padding:6px 10px;background:rgba(255,255,255,.95);
   border:1px solid rgba(0,0,0,.14);border-radius:999px;
   -webkit-tap-highlight-color:transparent;
+  color:#000; /* ✅ ЧЕРНЫЙ ШРИФТ */
 }
 #rg-center.needs-tap .rg-tap{display:block}
 
@@ -107,7 +108,6 @@
     {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/in-my-room-2/main/4.jpg"}
   ];
 
-  // Cloudinary fetch для картинок/постеров (быстрее, легче)
   const CLOUD="dmtnse4sz";
   const DPR=Math.max(1, Math.min(3, window.devicePixelRatio||1));
   const TARGET_W=Math.min(1800, Math.ceil(560 * DPR * 1.6));
@@ -127,17 +127,13 @@
 
   const nodeCache=new Map();
   const readyCache=new Map();
-  const ric = window.requestIdleCallback || ((cb)=>setTimeout(()=>cb({timeRemaining:()=>0}), 120));
 
   function keyOf(el){ return el.type==="video" ? ("v:"+el.src) : ("i:"+el.src); }
-
   function setLoading(on){ center.classList.toggle("is-loading", !!on); }
-
   function setNeedsTap(on){
     center.classList.toggle("needs-tap", !!on);
     pauseBtn.style.pointerEvents = on ? "none" : "auto";
   }
-
   function setHasVideo(on){ center.classList.toggle("has-video", !!on); }
 
   function clearCenterKeepUI(){
@@ -151,13 +147,11 @@
   function ensureImg(src){
     const k="i:"+src;
     if(nodeCache.has(k)) return nodeCache.get(k);
-
     const img=new Image();
     img.className="rg-main";
     img.decoding="async";
     img.loading="eager";
     img.src=src;
-
     nodeCache.set(k,img);
     return img;
   }
@@ -168,7 +162,6 @@
 
     const v=document.createElement("video");
     v.className="rg-main";
-
     v.autoplay=true;
     v.loop=true;
     v.controls=false;
@@ -184,7 +177,6 @@
 
     if(el.poster) v.poster=el.poster;
 
-    // стартуем muted (чтобы autoplay точно пошёл)
     v.muted=true;
     v.volume=0;
     v.setAttribute("muted","");
@@ -209,9 +201,8 @@
           resolve(true);
         };
         if(img.complete){ done(); return; }
-        img.onload=done;
-        img.onerror=done;
-      } else {
+        img.onload=done; img.onerror=done;
+      }else{
         if(el.poster) ensureReady({type:"img", src: el.poster});
         const v=document.createElement("video");
         v.preload="metadata";
@@ -237,41 +228,11 @@
     }
   }
 
-  function forceAutoplayMuted(v){
-    let tries=0;
-    const MAX=24;
-
-    const attempt=()=>{
-      if(!v) return;
-      if(!v.paused) return;
-      tries++;
-
-      v.muted=true;
-      v.volume=0;
-      v.setAttribute("muted","");
-
-      const p=v.play();
-      if(p && typeof p.catch==="function"){
-        p.catch(()=>{ if(tries<MAX) requestAnimationFrame(attempt); });
-      } else {
-        if(tries<MAX) requestAnimationFrame(attempt);
-      }
-    };
-
-    v.addEventListener("loadeddata", attempt, {once:true});
-    v.addEventListener("canplay", attempt, {once:true});
-    attempt();
-    requestAnimationFrame(attempt);
-    setTimeout(attempt, 80);
-    setTimeout(attempt, 250);
-    setTimeout(attempt, 600);
-  }
-
   async function tryPlayWithSound(v){
     try{
-      v.muted = false;
+      v.muted=false;
       v.removeAttribute("muted");
-      v.volume = 1;
+      v.volume=1;
       await v.play();
       return true;
     }catch(e){}
@@ -279,12 +240,14 @@
   }
 
   async function startVideoSmart(v){
+    // если уже разлочено — пробуем со звуком
     if(soundUnlocked){
       if(await tryPlayWithSound(v)){
         setNeedsTap(false);
         return true;
       }
     }else{
+      // вдруг уже разрешено
       if(await tryPlayWithSound(v)){
         soundUnlocked=true;
         setNeedsTap(false);
@@ -292,7 +255,7 @@
       }
     }
 
-    // fallback: muted autoplay
+    // fallback muted autoplay
     try{
       v.muted=true;
       v.volume=0;
@@ -303,51 +266,45 @@
     return false;
   }
 
-  async function unlockSound(){
+  // ✅ unlock строго в CLICK (user gesture), без preventDefault на touch/pointer
+  async function unlockSoundFromGesture(){
     if(!currentVideo) return;
 
     soundUnlocked = true;
 
-    // 1) пробуем прямо в user gesture
-    if(await tryPlayWithSound(currentVideo)){
-      setNeedsTap(false);
-      return;
-    }
-
-    // 2) пробуем ещё раз на следующий кадр (iOS/iframe)
+    // пробуем несколько раз быстро (iframe/iOS бывает капризным)
+    if(await tryPlayWithSound(currentVideo)){ setNeedsTap(false); return; }
     await new Promise(r=>requestAnimationFrame(r));
-    if(await tryPlayWithSound(currentVideo)){
-      setNeedsTap(false);
-      return;
-    }
-
-    setNeedsTap(true);
+    if(await tryPlayWithSound(currentVideo)){ setNeedsTap(false); return; }
+    setTimeout(async ()=>{
+      if(currentVideo && (await tryPlayWithSound(currentVideo))) setNeedsTap(false);
+      else setNeedsTap(true);
+    }, 80);
   }
 
-  function swallow(e){
-    e.preventDefault();
+  // ✅ блокируем “протекание” но НЕ убиваем gesture
+  function stopEvent(e){
     e.stopPropagation();
     if(e.stopImmediatePropagation) e.stopImmediatePropagation();
   }
 
-  // tap for sound: блокируем “протекание” первого нажатия
   tapBtn.addEventListener("pointerdown", (e)=>{
     if(!center.classList.contains("needs-tap")) return;
-    swallow(e);
+    stopEvent(e); // no preventDefault
   }, true);
 
   tapBtn.addEventListener("touchstart", (e)=>{
     if(!center.classList.contains("needs-tap")) return;
-    swallow(e);
-  }, {passive:false, capture:true});
+    stopEvent(e); // no preventDefault
+  }, {passive:true, capture:true});
 
   tapBtn.addEventListener("click", async (e)=>{
     if(!center.classList.contains("needs-tap")) return;
-    swallow(e);
-    await unlockSound();
-  });
+    e.preventDefault();
+    stopEvent(e);
+    await unlockSoundFromGesture();
+  }, true);
 
-  // невидимая пауза
   pauseBtn.addEventListener("click", async (e)=>{
     e.preventDefault();
     const v=currentVideo;
@@ -384,23 +341,9 @@
 
     setHasVideo(true);
 
-    forceAutoplayMuted(v);
-    setTimeout(()=>{ if(currentVideo===v) startVideoSmart(v); }, 80);
-  }
-
-  function preloadAround(i){
-    const n=fastElements.length;
-    const prev=(i-1+n)%n;
-    const next=(i+1+n)%n;
-
-    ensureReady(fastElements[i]);
-    ensureReady(fastElements[prev]);
-    ensureReady(fastElements[next]);
-
-    ric(()=>{
-      ensureReady(fastElements[(prev-1+n)%n]);
-      ensureReady(fastElements[(next+1)%n]);
-    });
+    // стартуем muted чтобы autoplay пошел
+    try{ v.play(); }catch(_){}
+    setTimeout(()=>{ if(currentVideo===v) startVideoSmart(v); }, 60);
   }
 
   async function show(i){
@@ -414,7 +357,12 @@
     setLoading(true);
     setNeedsTap(false);
 
-    preloadAround(i);
+    // прелоад вокруг
+    const prev=(i-1+n)%n, next=(i+1)%n;
+    ensureReady(fastElements[i]);
+    ensureReady(fastElements[prev]);
+    ensureReady(fastElements[next]);
+    setTimeout(()=>ensureReady(fastElements[(next+1)%n]), 120);
 
     await ensureReady(fastElements[i]);
     if(t!==token) return;
@@ -426,40 +374,38 @@
   prevBtn.onclick=()=>show(index-1);
   nextBtn.onclick=()=>show(index+1);
 
-  // свайп
+  // swipe
   let sx=0, sy=0, dx=0, dy=0, moved=false;
-
-  gallery.addEventListener("touchstart", (e)=>{
-    const t = e.touches[0];
-    sx = t.clientX; sy = t.clientY;
-    dx = 0; dy = 0;
-    moved = false;
-  }, {passive:true});
-
-  gallery.addEventListener("touchmove", (e)=>{
-    const t = e.touches[0];
-    dx = t.clientX - sx;
-    dy = t.clientY - sy;
-    if(Math.abs(dx) > 10 || Math.abs(dy) > 10) moved = true;
-  }, {passive:true});
-
-  gallery.addEventListener("touchend", ()=>{
+  gallery.addEventListener("touchstart",(e)=>{
+    const t=e.touches[0];
+    sx=t.clientX; sy=t.clientY; dx=0; dy=0; moved=false;
+  },{passive:true});
+  gallery.addEventListener("touchmove",(e)=>{
+    const t=e.touches[0];
+    dx=t.clientX-sx; dy=t.clientY-sy;
+    if(Math.abs(dx)>10 || Math.abs(dy)>10) moved=true;
+  },{passive:true});
+  gallery.addEventListener("touchend",()=>{
     if(!moved) return;
-    if(Math.abs(dx) <= Math.abs(dy)) return;
-    if(Math.abs(dx) < 70) return;
-    dx < 0 ? show(index+1) : show(index-1);
-  }, {passive:true});
+    if(Math.abs(dx)<=Math.abs(dy)) return;
+    if(Math.abs(dx)<70) return;
+    dx<0 ? show(index+1) : show(index-1);
+  },{passive:true});
 
   // уход/сворачивание: звук пропадает
   document.addEventListener("visibilitychange", ()=>{
     if(document.hidden) stopAllVideosNow();
-    else if(!document.hidden && currentVideo) forceAutoplayMuted(currentVideo);
+    else if(!document.hidden && currentVideo){
+      // возвращаем muted autoplay, а звук — только по тапу
+      try{ currentVideo.muted=true; currentVideo.volume=0; currentVideo.setAttribute("muted",""); }catch(e){}
+      try{ currentVideo.play(); }catch(e){}
+      if(!soundUnlocked) setNeedsTap(true);
+    }
   });
   window.addEventListener("pagehide", stopAllVideosNow, {capture:true});
   window.addEventListener("beforeunload", stopAllVideosNow, {capture:true});
   window.addEventListener("blur", ()=>{ if(document.hidden) return; stopAllVideosNow(); }, {capture:true});
 
-  preloadAround(0);
   show(0);
 })();
 </script>
