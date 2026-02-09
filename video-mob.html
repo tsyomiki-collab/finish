@@ -68,28 +68,33 @@
 }
 .rg-loading.is-on{display:block}
 
+/* ✅ TAP PILL */
 .rg-unmute{
   position:absolute;left:50%;top:50%;
   transform:translate(-50%,-50%);
   display:none;
-  z-index:5;
+  z-index:6;
   pointer-events:auto;
   cursor:pointer;
   user-select:none;
   -webkit-tap-highlight-color:transparent;
+
+  /* сама “пилюля” */
+  padding:6px 10px;
+  background:rgba(255,255,255,.95);
+  border:1px solid rgba(0,0,0,.14);
+  border-radius:999px;
 }
 .rg-unmute.is-on{display:block}
 .rg-unmute::after{
   content:"tap for sound";
   font-family:"SegoeUI","Segoe UI",-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif;
   font-weight:300;
-  font-size:10px;
+  font-size:8px;
   line-height:16px;
   letter-spacing:0.01em;
   white-space:nowrap;
-  color:#fff;
-  mix-blend-mode:difference;
-  opacity:.9;
+  color:#000; /* если хочешь белый с difference — скажи, верну */
 }
 
 /* прозрачная зона клика паузы */
@@ -307,12 +312,6 @@
     }, 80);
   }
 
-  function stopVideo(){
-    if(!currentVideo) return;
-    try{ currentVideo.pause(); }catch(e){}
-    currentVideo=null;
-  }
-
   function silenceNow(){
     if(!currentVideo) return;
     try{ currentVideo.pause(); }catch(e){}
@@ -322,7 +321,8 @@
 
   async function mount(el){
     clearCenterKeepUI();
-    stopVideo();
+    if(currentVideo){ silenceNow(); currentVideo=null; }
+
     setPauseBtnVisible(false);
     pauseBtn.onclick=null;
 
@@ -377,6 +377,7 @@
   prevBtn.onclick=()=>show(index-1);
   nextBtn.onclick=()=>show(index+1);
 
+  // свайп
   let startX=0;
   gallery.addEventListener("touchstart",e=>{startX=e.touches[0].clientX},{passive:true});
   gallery.addEventListener("touchend",e=>{
@@ -384,7 +385,7 @@
     if(Math.abs(d)>40){ d<0?show(index+1):show(index-1) }
   },{passive:true});
 
-  // ✅ ВАЖНО: на pointerdown/touchstart НЕ делаем preventDefault (иначе iOS ломает gesture)
+  // ✅ БЛОК ПЕРВОГО НАЖАТИЯ "как раньше", но без preventDefault на touchstart (чтобы iOS gesture не ломался)
   function stopOnly(e){
     e.stopPropagation();
     if(e.stopImmediatePropagation) e.stopImmediatePropagation();
@@ -400,7 +401,7 @@
     stopOnly(e);
   }, {passive:true, capture:true});
 
-  // ✅ анмьют строго в click
+  // ✅ анмьют строго в click (gesture)
   unmuteEl.addEventListener("click", async (e)=>{
     if(!unmuteEl.classList.contains("is-on")) return;
     e.preventDefault();
@@ -408,7 +409,6 @@
     await unlockSoundNow();
   }, true);
 
-  // бонус: если кто-то нажимает Enter/Space
   unmuteEl.addEventListener("keydown", (e)=>{
     if(!unmuteEl.classList.contains("is-on")) return;
     if(e.key==="Enter" || e.key===" "){
@@ -417,6 +417,7 @@
     }
   });
 
+  // уход/сворачивание: звук пропадает
   document.addEventListener("visibilitychange", ()=>{
     if(document.hidden) silenceNow();
     else if(currentVideo) startVideoSmart(currentVideo);
