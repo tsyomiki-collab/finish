@@ -3,10 +3,10 @@
     <div id="rg-center">
       <span class="rg-loading is-on" aria-hidden="true">loading...</span>
 
-      <!-- tap for sound (появится только если звук заблокирован) -->
-      <span class="rg-unmute" role="button" aria-label="Tap for sound"></span>
+      <!-- tap for sound -->
+      <span class="rg-unmute" role="button" aria-label="Tap for sound" tabindex="0"></span>
 
-      <!-- ✅ НЕВИДИМАЯ зона паузы поверх видео -->
+      <!-- невидимая пауза -->
       <button class="rg-pause" type="button" aria-label="Pause/Play"></button>
 
       <div class="rg-nav">
@@ -51,8 +51,7 @@
 .rg-btn{font-size:1.6rem;background:none;border:none;color:#666;cursor:pointer;padding:4px 8px;user-select:none;-webkit-tap-highlight-color:transparent}
 
 .rg-loading{
-  position:absolute;
-  left:50%; top:50%;
+  position:absolute;left:50%; top:50%;
   transform:translate(-50%,-50%);
   font-family:"SegoeUI","Segoe UI",-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif;
   font-weight:300;
@@ -69,45 +68,47 @@
 }
 .rg-loading.is-on{display:block}
 
+/* ✅ TAP PILL */
 .rg-unmute{
   position:absolute;left:50%;top:50%;
   transform:translate(-50%,-50%);
   display:none;
-  z-index:5;
+  z-index:6;
   pointer-events:auto;
   cursor:pointer;
   user-select:none;
   -webkit-tap-highlight-color:transparent;
+
+  padding:6px 10px;
+  background:rgba(255,255,255,.95);
+  border:1px solid rgba(0,0,0,.14);
+  border-radius:999px;
 }
 .rg-unmute.is-on{display:block}
 .rg-unmute::after{
   content:"tap for sound";
   font-family:"SegoeUI","Segoe UI",-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif;
   font-weight:300;
-  font-size:10px;
+  font-size:8px;
   line-height:16px;
   letter-spacing:0.01em;
   white-space:nowrap;
-  color:#fff;
-  mix-blend-mode:difference;
-  opacity:.9;
+  color:#000;
 }
 
-/* ✅ полностью прозрачная зона клика */
+/* прозрачная зона клика паузы */
 .rg-pause{
   position:absolute;
-  left:50%; top:50%;
-  transform:translate(-50%,-50%);
-  width:100%;
-  height:100%;
+  inset:0;
   border:0;
   padding:0;
   background:transparent;
   cursor:pointer;
-  display:none;              /* показываем только когда видео */
+  display:none;
   z-index:4;
   pointer-events:auto;
   -webkit-tap-highlight-color:transparent;
+  touch-action:manipulation;
 }
 .rg-pause.is-on{display:block}
 </style>
@@ -129,7 +130,7 @@
   }
 
   const elementsRaw=[
-     {
+    {
       type:'video',
       src:"https://res.cloudinary.com/dmtnse4sz/video/upload/v1769859479/9_tz6zq9.mp4",
       poster:"https://raw.githubusercontent.com/tsyomiki-collab/midnight/main/Screenshot%202026-01-31%20at%2015.42.16.png"
@@ -142,7 +143,6 @@
     {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/midnight/main/6.jpg"},
     {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/midnight/main/7.jpg"},
     {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/midnight/main/8.jpg"},
-   
     {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/midnight/main/10.jpg"},
     {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/midnight/main/11.jpg"}
   ];
@@ -157,6 +157,9 @@
   let currentVideo=null;
   let soundUnlocked=false;
 
+  // ✅ анти-пауза сразу после анмьюта
+  let pauseCooldownUntil = 0;
+
   const center=document.getElementById("rg-center");
   const prevBtn=gallery.querySelector(".rg-prev");
   const nextBtn=gallery.querySelector(".rg-next");
@@ -170,7 +173,10 @@
   const ric = window.requestIdleCallback || ((cb)=>setTimeout(()=>cb({timeRemaining:()=>0}), 120));
 
   function setLoading(on){ loadingEl.classList.toggle("is-on", !!on); }
-  function setUnmute(on){ unmuteEl.classList.toggle("is-on", !!on); }
+  function setUnmute(on){
+    unmuteEl.classList.toggle("is-on", !!on);
+    pauseBtn.style.pointerEvents = on ? "none" : "auto";
+  }
   function setPauseBtnVisible(on){ pauseBtn.classList.toggle("is-on", !!on); }
 
   function clearCenterKeepUI(){
@@ -210,9 +216,12 @@
     v.setAttribute("disablePictureInPicture","");
     v.setAttribute("disableRemotePlayback","");
     if(el.poster) v.poster=el.poster;
-    v.muted=false; v.volume=1;
-    v.src=el.src;
 
+    v.muted=true;
+    v.volume=0;
+    v.setAttribute("muted","");
+
+    v.src=el.src;
     nodeCache.set(k,v);
     return v;
   }
@@ -254,8 +263,11 @@
   }
 
   async function tryPlayWithSound(v){
-    v.muted=false; v.volume=1;
-    try{ await v.play(); return true; }catch(e){}
+    try{
+      v.muted=false; v.removeAttribute("muted"); v.volume=1;
+      await v.play();
+      return true;
+    }catch(e){}
     return false;
   }
 
@@ -264,7 +276,7 @@
     const attempt=()=>{
       if(!v || !v.paused) return;
       tries++;
-      v.muted=true; v.volume=0;
+      v.muted=true; v.volume=0; v.setAttribute("muted","");
       const p=v.play();
       if(p && p.catch) p.catch(()=>{ if(tries<MAX) requestAnimationFrame(attempt); });
       else if(tries<MAX) requestAnimationFrame(attempt);
@@ -288,30 +300,44 @@
   }
 
   async function unlockSoundNow(){
+    if(!currentVideo) return;
     soundUnlocked=true;
     setUnmute(false);
-    if(!currentVideo) return;
-    currentVideo.muted=false; currentVideo.volume=1;
-    try{ await currentVideo.play(); }catch(e){ setUnmute(true); }
-  }
 
-  function stopVideo(){
-    if(!currentVideo) return;
-    try{ currentVideo.pause(); }catch(e){}
-    currentVideo=null;
+    if(await tryPlayWithSound(currentVideo)){
+      pauseCooldownUntil = performance.now() + 300;
+      setUnmute(false);
+      return;
+    }
+
+    await new Promise(r=>requestAnimationFrame(r));
+    if(await tryPlayWithSound(currentVideo)){
+      pauseCooldownUntil = performance.now() + 300;
+      setUnmute(false);
+      return;
+    }
+
+    setTimeout(async ()=>{
+      if(currentVideo && (await tryPlayWithSound(currentVideo))){
+        pauseCooldownUntil = performance.now() + 300;
+        setUnmute(false);
+      }else{
+        setUnmute(true);
+      }
+    }, 80);
   }
 
   function silenceNow(){
     if(!currentVideo) return;
     try{ currentVideo.pause(); }catch(e){}
-    currentVideo.muted=true;
-    currentVideo.volume=0;
+    try{ currentVideo.muted=true; currentVideo.volume=0; currentVideo.setAttribute("muted",""); }catch(e){}
     setUnmute(false);
   }
 
   async function mount(el){
     clearCenterKeepUI();
-    stopVideo();
+    if(currentVideo){ silenceNow(); currentVideo=null; }
+
     setPauseBtnVisible(false);
     pauseBtn.onclick=null;
 
@@ -327,19 +353,34 @@
     const hide=()=>setLoading(false);
     v.addEventListener("playing", hide, {once:true});
     v.addEventListener("loadeddata", hide, {once:true});
-    v.addEventListener("error", hide, {once:true});
+    v.onerror=hide;
 
     center.insertBefore(v, nav);
     setPauseBtnVisible(true);
 
-    pauseBtn.onclick=async ()=>{
-      if(!currentVideo) return;
-      if(currentVideo.paused){
-        await startVideoSmart(currentVideo);
+    // ✅ ПЕРВЫЙ ТАП ПО ВИДЕО = ТОЛЬКО ЗВУК (пауза не работает)
+    pauseBtn.onclick=async (e)=>{
+      e.preventDefault();
+      e.stopPropagation();
+      if(e.stopImmediatePropagation) e.stopImmediatePropagation();
+
+      const v=currentVideo;
+      if(!v) return;
+
+      // если нужен звук — первый тап всегда анмьют
+      if(unmuteEl.classList.contains("is-on")){
+        await unlockSoundNow();
+        return;
+      }
+
+      // защита: не даём паузу сразу после анмьюта
+      if(performance.now() < pauseCooldownUntil) return;
+
+      if(v.paused){
+        await startVideoSmart(v);
       }else{
-        currentVideo.pause();
-        currentVideo.muted=true;
-        currentVideo.volume=0;
+        try{ v.pause(); }catch(_){}
+        try{ v.muted=true; v.volume=0; v.setAttribute("muted",""); }catch(_){}
         setUnmute(false);
       }
     };
@@ -367,27 +408,61 @@
   prevBtn.onclick=()=>show(index-1);
   nextBtn.onclick=()=>show(index+1);
 
-  let startX=0;
-  gallery.addEventListener("touchstart",e=>{startX=e.touches[0].clientX},{passive:true});
-  gallery.addEventListener("touchend",e=>{
-    const d=e.changedTouches[0].clientX-startX;
-    if(Math.abs(d)>40){ d<0?show(index+1):show(index-1) }
-  },{passive:true});
+  // ---------------------------------------
+  // ✅ БЛОКИРОВКА ПЕРВОГО ТАПА / ANTI-SWIPE
+  // ---------------------------------------
+  function stopOnly(e){
+    e.stopPropagation();
+    if(e.stopImmediatePropagation) e.stopImmediatePropagation();
+  }
 
-  unmuteEl.addEventListener("click",(e)=>{ e.preventDefault(); unlockSoundNow(); });
+  // глушим "протекание" на первом касании по тап-пилюле (без preventDefault)
+  unmuteEl.addEventListener("pointerdown",(e)=>{
+    if(!unmuteEl.classList.contains("is-on")) return;
+    stopOnly(e);
+  }, true);
 
-  (function armGlobalUnlockOnce(){
-    const unlock=()=>{ unlockSoundNow(); cleanup(); };
-    const cleanup=()=>{
-      gallery.removeEventListener("pointerdown", unlock, true);
-      gallery.removeEventListener("touchstart", unlock, true);
-      window.removeEventListener("keydown", unlock, true);
-    };
-    gallery.addEventListener("pointerdown", unlock, {once:true, passive:true, capture:true});
-    gallery.addEventListener("touchstart", unlock, {once:true, passive:true, capture:true});
-    window.addEventListener("keydown", unlock, {once:true, capture:true});
-  })();
+  unmuteEl.addEventListener("touchstart",(e)=>{
+    if(!unmuteEl.classList.contains("is-on")) return;
+    stopOnly(e);
+  }, {passive:true, capture:true});
 
+  // свайп (ЖЁСТКИЙ): если тач начался внутри центра — свайпа нет
+  let startX = 0;
+  let swipeAllowed = true;
+
+  gallery.addEventListener("touchstart", (e)=>{
+    startX = e.touches[0].clientX;
+
+    swipeAllowed = !center.contains(e.target);
+    if(unmuteEl.classList.contains("is-on")) swipeAllowed = false;
+  }, {passive:true});
+
+  gallery.addEventListener("touchend", (e)=>{
+    if(!swipeAllowed) return;
+    const d = e.changedTouches[0].clientX - startX;
+    if(Math.abs(d) > 40){
+      d < 0 ? show(index+1) : show(index-1);
+    }
+  }, {passive:true});
+
+  // ✅ анмьют строго в click (gesture)
+  unmuteEl.addEventListener("click", async (e)=>{
+    if(!unmuteEl.classList.contains("is-on")) return;
+    e.preventDefault();
+    stopOnly(e);
+    await unlockSoundNow();
+  }, true);
+
+  unmuteEl.addEventListener("keydown", (e)=>{
+    if(!unmuteEl.classList.contains("is-on")) return;
+    if(e.key==="Enter" || e.key===" "){
+      e.preventDefault();
+      unmuteEl.click();
+    }
+  });
+
+  // уход/сворачивание: звук пропадает
   document.addEventListener("visibilitychange", ()=>{
     if(document.hidden) silenceNow();
     else if(currentVideo) startVideoSmart(currentVideo);
