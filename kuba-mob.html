@@ -3,12 +3,10 @@
     <div id="rg-center">
       <span class="rg-loading is-on" aria-hidden="true">loading...</span>
 
-      <!-- ✅ tap визуал как в in my room -->
       <button class="rg-tap" type="button" aria-label="Tap to screen">
         tap for sound
       </button>
 
-      <!-- ✅ невидимая пауза по всей площади видео (появится только на видео) -->
       <button class="rg-pauseHit" type="button" aria-label="Toggle pause" tabindex="-1"></button>
 
       <div class="rg-nav">
@@ -52,7 +50,6 @@
 .rg-nav{position:absolute;left:50%;bottom:-65px;transform:translateX(-50%);display:flex;gap:25px;pointer-events:auto}
 .rg-btn{font-size:1.6rem;background:none;border:none;color:#666;cursor:pointer;padding:4px 8px;user-select:none;-webkit-tap-highlight-color:transparent}
 
-/* LOADING (mix-blend) */
 .rg-loading{
   position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
   font-family:"SegoeUI","Segoe UI",-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif;
@@ -70,7 +67,6 @@
 }
 .rg-loading.is-on{display:block}
 
-/* ✅ TAP — 1:1 как в in my room */
 .rg-tap{
   position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
   z-index:5;
@@ -94,12 +90,11 @@
 }
 #rg-center.needs-tap .rg-tap{display:block}
 
-/* ✅ невидимая кнопка паузы поверх всего видео */
 .rg-pauseHit{
   position:absolute;
   inset:0;
-  z-index:2;               /* ниже tap (5) и ниже стрелок (nav), но выше видео */
-  display:none;            /* включаем только на видео */
+  z-index:2;
+  display:none;
   pointer-events:auto;
   background:transparent;
   border:0;
@@ -158,14 +153,17 @@
   const readyCache=new Map();
   const ric = window.requestIdleCallback || ((cb)=>setTimeout(()=>cb({timeRemaining:()=>0}), 120));
 
+  // ✅ НОВОЕ: окно блокировки паузы после тапа по звуку
+  let pauseLockUntil = 0;
+  const PAUSE_LOCK_MS = 450;
+
   function keyOf(el){ return el.type==="video" ? ("v:"+el.src) : ("i:"+el.src); }
 
   function setLoading(on){ loadingEl.classList.toggle("is-on", !!on); }
 
-  // ✅ ИЗМЕНЕНО: needs-tap теперь еще и блокирует паузу (чтобы первый тап не ставил pause)
+  // ✅ ИЗМЕНЕНО: needs-tap ещё и выключает pauseHit + (важно) не даёт ему поймать “первый тап”
   function setNeedsTap(on){
     center.classList.toggle("needs-tap", !!on);
-    // пока показан tap-for-sound — пауза не кликается
     pauseHit.style.pointerEvents = on ? "none" : "auto";
   }
 
@@ -288,10 +286,10 @@
       v.muted=false;
       v.volume=1;
       await v.play();
-      setNeedsTap(false);   // ✅ тут автоматически включаем pauseHit обратно
+      setNeedsTap(false);
       return true;
     }catch(e){
-      setNeedsTap(true);    // ✅ тут автоматически выключаем pauseHit
+      setNeedsTap(true);
       return false;
     }
   }
@@ -301,23 +299,47 @@
     await tryEnableSound(currentVideo);
   }
 
-  // ✅ ИЗМЕНЕНО: стопаем всплытие, чтобы “тап” не триггерил паузу
+  // ✅ НОВОЕ: жёсткая блокировка паузы на короткий период
+  function lockPauseNow(){
+    pauseLockUntil = Date.now() + PAUSE_LOCK_MS;
+    // на всякий случай физически выключаем на этот момент
+    pauseHit.style.pointerEvents = "none";
+    setTimeout(()=>{
+      // включаем обратно только если не needs-tap
+      if(!center.classList.contains("needs-tap")){
+        pauseHit.style.pointerEvents = "auto";
+      }
+    }, PAUSE_LOCK_MS);
+  }
+
+  // ✅ ИЗМЕНЕНО: ловим ранний жест (pointerdown/touchstart) и сразу блокируем паузу
+  function tapGuard(e){
+    if(!center.classList.contains("needs-tap")) return;
+    e.preventDefault();
+    e.stopPropagation();
+    if(e.stopImmediatePropagation) e.stopImmediatePropagation();
+    lockPauseNow();
+  }
+  tapBtn.addEventListener("pointerdown", tapGuard, true);
+  tapBtn.addEventListener("touchstart",  tapGuard, {passive:false, capture:true});
+
+  // ✅ ИЗМЕНЕНО: сам клик по тапу — тоже с блоком
   tapBtn.addEventListener("click", (e)=>{
     e.preventDefault();
     e.stopPropagation();
     if(e.stopImmediatePropagation) e.stopImmediatePropagation();
+    lockPauseNow();
     unlockSound();
   });
 
-  // ✅ невидимая пауза по всей площади видео
+  // ✅ ИЗМЕНЕНО: pauseHit не реагирует, если мы в окне блокировки
   pauseHit.addEventListener("click", (e)=>{
     e.preventDefault();
     const v=currentVideo;
     if(!v) return;
 
-    // если tap-for-sound показан, пауза и так выключена (pointer-events:none),
-    // но оставляем дополнительный guard на всякий случай
     if(center.classList.contains("needs-tap")) return;
+    if(Date.now() < pauseLockUntil) return;
 
     if(v.paused){
       const p=v.play();
@@ -364,7 +386,6 @@
 
     forceAutoplayMuted(v);
 
-    // пробуем звук после старта; если нельзя — покажем tap и выключим pauseHit
     setTimeout(()=>{ if(currentVideo===v) tryEnableSound(v); }, 120);
 
     gallery.addEventListener("pointerdown", unlockSound, {once:true, passive:true, capture:true});
@@ -417,7 +438,6 @@
     if(Math.abs(d)>40){ d<0?show(index+1):show(index-1) }
   },{passive:true});
 
-  // ✅ убрать звук когда юзер выходит со страницы / сворачивает / уходит
   document.addEventListener("visibilitychange", ()=>{
     if(document.hidden) stopAllVideosNow();
     else if(!document.hidden && currentVideo) forceAutoplayMuted(currentVideo);
