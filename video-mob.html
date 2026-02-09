@@ -37,13 +37,18 @@
 
 #rg-gallery{position:fixed;inset:0;background:#fcfcfc;z-index:9999;overflow:hidden}
 
-/* ✅ важное: клики должны доходить */
-#rg-stage{position:absolute;inset:0;top:-60px;display:flex;align-items:center;justify-content:center;pointer-events:auto}
+/* ✅ FIX: НЕЛЬЗЯ pointer-events:none, иначе жест “ломается” */
+#rg-stage{
+  position:absolute;inset:0;top:-60px;
+  display:flex;align-items:center;justify-content:center;
+  pointer-events:auto;
+}
 #rg-center{
   width:86vw;max-width:520px;
   height:62vh;max-height:560px;
   display:flex;align-items:center;justify-content:center;
-  position:relative;pointer-events:auto
+  position:relative;
+  pointer-events:auto;
 }
 
 .rg-main{max-width:100%;max-height:100%;object-fit:contain;display:block;pointer-events:auto}
@@ -116,27 +121,33 @@
   const elements=[
     {
       type:'video',
-      src:"https://res.cloudinary.com/dmtnse4sz/video/upload/v1769510229/video-2_sfc2rt.mp4",
-      poster:"https://raw.githubusercontent.com/tsyomiki-collab/kuba/main/photo_2026-01-31%2015.19.33.jpeg"
+      src:"https://res.cloudinary.com/dmtnse4sz/video/upload/v1769859479/9_tz6zq9.mp4",
+      poster:"https://raw.githubusercontent.com/tsyomiki-collab/midnight/main/Screenshot%202026-01-31%20at%2015.42.16.png"
     },
-    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/kuba/main/1-4.png"},
-    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/kuba/main/2-4.png"},
-    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/kuba/main/3-4.png"},
-    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/kuba/main/4-4.png"},
-    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/kuba/main/witch44%20Kopie-2.jpg"}
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/midnight/main/1.jpg"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/midnight/main/2.jpg"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/midnight/main/3.jpg"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/midnight/main/4.jpg"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/midnight/main/5.jpg"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/midnight/main/6.jpg"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/midnight/main/7.jpg"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/midnight/main/8.jpg"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/midnight/main/10.jpg"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/midnight/main/11.jpg"}
   ];
 
   const CLOUD="dmtnse4sz";
   const DPR=Math.max(1, Math.min(3, window.devicePixelRatio||1));
-  const TARGET_W=Math.min(1800, Math.ceil(520 * DPR * 1.6));
+  const TARGET_W=Math.min(2000, Math.ceil(520 * DPR * 1.6));
+  const POSTER_W=Math.min(2000, Math.ceil(520 * DPR * 1.2));
 
-  function cldFetch(url){
-    return `https://res.cloudinary.com/${CLOUD}/image/fetch/f_auto,q_auto:eco,fl_progressive,w_${TARGET_W}/${encodeURIComponent(url)}`;
+  function cldFetch(url, w){
+    return `https://res.cloudinary.com/${CLOUD}/image/fetch/f_auto,q_auto:eco,fl_progressive,w_${w}/${encodeURIComponent(url)}`;
   }
 
   const fastElements = elements.map(el=>{
-    if(el.type==="img") return { ...el, src: cldFetch(el.src) };
-    if(el.type==="video" && el.poster) return { ...el, poster: cldFetch(el.poster) };
+    if(el.type==="img") return { ...el, src: cldFetch(el.src, TARGET_W) };
+    if(el.type==="video" && el.poster) return { ...el, poster: cldFetch(el.poster, POSTER_W) };
     return el;
   });
 
@@ -191,6 +202,8 @@
     v.className="rg-main";
 
     v.autoplay=true;
+    v.setAttribute("autoplay","");
+
     v.loop=true;
     v.controls=false;
 
@@ -205,10 +218,10 @@
 
     if(el.poster) v.poster=el.poster;
 
-    // ✅ порядок важен: muted ДО src
+    // ✅ важно: muted ДО src (и атрибут тоже)
     v.muted=true;
-    v.volume=0;
     v.setAttribute("muted","");
+    v.volume=0;
 
     v.src=el.src;
 
@@ -228,8 +241,7 @@
           resolve(true);
         };
         if(img.complete){ done(); return; }
-        img.onload=done;
-        img.onerror=done;
+        img.onload=done; img.onerror=done;
       } else {
         if(el.poster) ensureReady({type:"img", src: el.poster});
         const v=document.createElement("video");
@@ -256,10 +268,10 @@
     }
   }
 
-  // ✅ агрессивный autoplay muted (чтобы реально стартовало сразу)
+  // ✅ максимально быстро стартуем muted (чтобы tap был только unmute)
   function forceAutoplayMuted(v){
     let tries=0;
-    const MAX=40;
+    const MAX=50;
 
     const attempt=()=>{
       if(!v) return;
@@ -275,16 +287,16 @@
       const p=v.play();
       if(p && typeof p.catch==="function"){
         p.catch(()=>{ if(tries<MAX) requestAnimationFrame(attempt); });
-      } else {
+      }else{
         if(tries<MAX) requestAnimationFrame(attempt);
       }
     };
 
-    // сразу несколько быстрых пинков
+    // сразу серия попыток
     attempt();
     requestAnimationFrame(attempt);
     setTimeout(attempt, 0);
-    setTimeout(attempt, 50);
+    setTimeout(attempt, 40);
     setTimeout(attempt, 120);
     setTimeout(attempt, 250);
     setTimeout(attempt, 600);
@@ -296,68 +308,52 @@
 
   async function tryPlayWithSound(v){
     try{
-      v.muted = false;
+      v.muted=false;
       v.removeAttribute("muted");
-      v.volume = 1;
-      await v.play();
+      v.volume=1;
+      await v.play(); // если уже играет muted — это почти мгновенно
       return true;
     }catch(e){}
     return false;
   }
 
-  async function startVideoSmart(v){
-    // хотим чтобы оно играло сразу (muted), а tap только включает звук
-    forceAutoplayMuted(v);
-
-    if(soundUnlocked){
-      if(await tryPlayWithSound(v)){
-        setNeedsTap(false);
-        return true;
-      }
-    }else{
-      if(await tryPlayWithSound(v)){
-        soundUnlocked=true;
-        setNeedsTap(false);
-        return true;
-      }
-    }
-
-    // если звук нельзя — показываем tap, но видео продолжает играть muted
-    setNeedsTap(true);
-    return false;
+  function showTapIfNeeded(on){
+    setNeedsTap(!!on);
   }
 
   async function unlockSound(){
     if(!currentVideo) return;
     soundUnlocked = true;
 
-    // ✅ если уже играет — это почти моментально
+    // 1) попытка в жесте
     if(await tryPlayWithSound(currentVideo)){
-      setNeedsTap(false);
+      showTapIfNeeded(false);
       return;
     }
 
+    // 2) попытка на следующий кадр (iOS iframe)
     await new Promise(r=>requestAnimationFrame(r));
     if(await tryPlayWithSound(currentVideo)){
-      setNeedsTap(false);
+      showTapIfNeeded(false);
       return;
     }
 
-    setNeedsTap(true);
+    showTapIfNeeded(true);
   }
 
+  // ✅ tap: блокируем “протекание” + анмьютим в gesture
   function swallow(e){
     e.preventDefault();
     e.stopPropagation();
     if(e.stopImmediatePropagation) e.stopImmediatePropagation();
   }
 
-  tapBtn.addEventListener("pointerdown", (e)=>{
+  tapBtn.addEventListener("pointerdown",(e)=>{
     if(!center.classList.contains("needs-tap")) return;
     swallow(e);
   }, true);
 
-  tapBtn.addEventListener("touchstart", (e)=>{
+  tapBtn.addEventListener("touchstart",(e)=>{
     if(!center.classList.contains("needs-tap")) return;
     swallow(e);
   }, {passive:false, capture:true});
@@ -366,29 +362,33 @@
     if(!center.classList.contains("needs-tap")) return;
     swallow(e);
     await unlockSound();
-  });
+  }, true);
 
+  // пауза: только когда tap не нужен
   pauseHit.addEventListener("click", async (e)=>{
     e.preventDefault();
     const v=currentVideo;
     if(!v) return;
-    if(center.classList.contains("needs-tap")) return; // ✅ первый тап только звук
+    if(center.classList.contains("needs-tap")) return; // ✅ первый жест только звук
 
     if(v.paused){
-      // если пауза — запускаем (и если звук уже разрешён — со звуком)
-      await startVideoSmart(v);
+      // если звук уже разрешён — попробуем со звуком, иначе хотя бы muted
+      if(soundUnlocked){
+        await tryPlayWithSound(v);
+      }else{
+        forceAutoplayMuted(v);
+      }
     }else{
-      try{ v.pause(); }catch(err){}
-      try{ v.muted=true; v.volume=0; v.setAttribute("muted",""); }catch(e2){}
-      // когда юзер поставил на паузу — tap не нужен
-      setNeedsTap(false);
+      try{ v.pause(); }catch(_){}
+      try{ v.muted=true; v.volume=0; v.setAttribute("muted",""); }catch(_){}
+      showTapIfNeeded(false);
     }
   });
 
   function showCenter(el){
     clearCenterKeepUI();
-    setNeedsTap(false);
     setHasVideo(false);
+    showTapIfNeeded(false);
 
     if(currentVideo){
       hardMuteAndStop(currentVideo);
@@ -401,14 +401,16 @@
     }
 
     const v=ensureVideo(el);
-    try{ v.load(); }catch(e){}
     center.insertBefore(v, navEl);
     currentVideo=v;
 
     setHasVideo(true);
 
-    // ✅ запускаем сразу, без ожиданий
-    startVideoSmart(v);
+    // ✅ ключевое: стартуем autoplay muted СРАЗУ
+    forceAutoplayMuted(v);
+
+    // если звук не разлочен — показываем тап (но видео уже должно играть muted)
+    if(!soundUnlocked) showTapIfNeeded(true);
   }
 
   function preloadAround(i){
@@ -435,21 +437,24 @@
     index=i;
 
     setLoading(true);
-    setNeedsTap(false);
-
+    showTapIfNeeded(false);
     preloadAround(i);
 
-    await ensureReady(fastElements[i]);
-    if(t!==token) return;
+    // ✅ картинки ждём decode, видео — не ждём (монтируем сразу и пусть буферится)
+    const item = fastElements[i];
+    if(item.type==="img"){
+      await ensureReady(item);
+      if(t!==token) return;
+    }
 
-    showCenter(fastElements[i]);
+    showCenter(item);
     setLoading(false);
   }
 
   prevBtn.onclick=()=>show(index-1);
   nextBtn.onclick=()=>show(index+1);
 
-  // свайп
+  // свайп (железный)
   let sx=0, sy=0, dx=0, dy=0, moved=false;
 
   gallery.addEventListener("touchstart", (e)=>{
@@ -473,6 +478,7 @@
     dx < 0 ? show(index+1) : show(index-1);
   }, {passive:true});
 
+  // уход/сворачивание: звук пропадает
   document.addEventListener("visibilitychange", ()=>{
     if(document.hidden) stopAllVideosNow();
     else if(!document.hidden && currentVideo) forceAutoplayMuted(currentVideo);
