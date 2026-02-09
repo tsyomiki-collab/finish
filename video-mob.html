@@ -79,7 +79,6 @@
   user-select:none;
   -webkit-tap-highlight-color:transparent;
 
-  /* сама “пилюля” */
   padding:6px 10px;
   background:rgba(255,255,255,.95);
   border:1px solid rgba(0,0,0,.14);
@@ -94,7 +93,7 @@
   line-height:16px;
   letter-spacing:0.01em;
   white-space:nowrap;
-  color:#000; /* если хочешь белый с difference — скажи, верну */
+  color:#000;
 }
 
 /* прозрачная зона клика паузы */
@@ -109,6 +108,7 @@
   z-index:4;
   pointer-events:auto;
   -webkit-tap-highlight-color:transparent;
+  touch-action:manipulation; /* не обяз, но помогает */
 }
 .rg-pause.is-on{display:block}
 </style>
@@ -343,13 +343,17 @@
     center.insertBefore(v, nav);
     setPauseBtnVisible(true);
 
-    pauseBtn.onclick=async ()=>{
-      if(!currentVideo) return;
-      if(currentVideo.paused){
-        await startVideoSmart(currentVideo);
+    pauseBtn.onclick=async (e)=>{
+      e.preventDefault();
+      const v=currentVideo;
+      if(!v) return;
+      if(center.classList.contains("needs-tap")) return;
+
+      if(v.paused){
+        await startVideoSmart(v);
       }else{
-        try{ currentVideo.pause(); }catch(e){}
-        try{ currentVideo.muted=true; currentVideo.volume=0; currentVideo.setAttribute("muted",""); }catch(e){}
+        try{ v.pause(); }catch(_){}
+        try{ v.muted=true; v.volume=0; v.setAttribute("muted",""); }catch(_){}
         setUnmute(false);
       }
     };
@@ -377,7 +381,28 @@
   prevBtn.onclick=()=>show(index-1);
   nextBtn.onclick=()=>show(index+1);
 
-  // свайп
+  // ---------------------------
+  // ✅ ANTI-SWIPE ON VIDEO CLICK
+  // ---------------------------
+  function stopOnly(e){
+    e.stopPropagation();
+    if(e.stopImmediatePropagation) e.stopImmediatePropagation();
+  }
+
+  // когда видео активно — любые touchstart/end по зоне паузы глушим,
+  // чтобы они не дошли до gallery и не сделали свайп
+  pauseBtn.addEventListener("touchstart", (e)=>{ if(currentVideo) stopOnly(e); }, {passive:true, capture:true});
+  pauseBtn.addEventListener("touchend",   (e)=>{ if(currentVideo) stopOnly(e); }, {passive:true, capture:true});
+  pauseBtn.addEventListener("pointerdown",(e)=>{ if(currentVideo) stopOnly(e); }, true);
+  pauseBtn.addEventListener("pointerup",  (e)=>{ if(currentVideo) stopOnly(e); }, true);
+
+  // и для тап-пилюли тоже (чтобы не свайпало)
+  unmuteEl.addEventListener("touchstart",(e)=>{ if(unmuteEl.classList.contains("is-on")) stopOnly(e); }, {passive:true, capture:true});
+  unmuteEl.addEventListener("touchend",  (e)=>{ if(unmuteEl.classList.contains("is-on")) stopOnly(e); }, {passive:true, capture:true});
+  unmuteEl.addEventListener("pointerdown",(e)=>{ if(unmuteEl.classList.contains("is-on")) stopOnly(e); }, true);
+  unmuteEl.addEventListener("pointerup",(e)=>{ if(unmuteEl.classList.contains("is-on")) stopOnly(e); }, true);
+
+  // свайп (оставляем, но он не будет срабатывать при тапе по видео-зоне)
   let startX=0;
   gallery.addEventListener("touchstart",e=>{startX=e.touches[0].clientX},{passive:true});
   gallery.addEventListener("touchend",e=>{
@@ -385,23 +410,7 @@
     if(Math.abs(d)>40){ d<0?show(index+1):show(index-1) }
   },{passive:true});
 
-  // ✅ БЛОК ПЕРВОГО НАЖАТИЯ "как раньше", но без preventDefault на touchstart (чтобы iOS gesture не ломался)
-  function stopOnly(e){
-    e.stopPropagation();
-    if(e.stopImmediatePropagation) e.stopImmediatePropagation();
-  }
-
-  unmuteEl.addEventListener("pointerdown",(e)=>{
-    if(!unmuteEl.classList.contains("is-on")) return;
-    stopOnly(e);
-  }, true);
-
-  unmuteEl.addEventListener("touchstart",(e)=>{
-    if(!unmuteEl.classList.contains("is-on")) return;
-    stopOnly(e);
-  }, {passive:true, capture:true});
-
-  // ✅ анмьют строго в click (gesture)
+  // анмьют строго в click
   unmuteEl.addEventListener("click", async (e)=>{
     if(!unmuteEl.classList.contains("is-on")) return;
     e.preventDefault();
@@ -417,7 +426,6 @@
     }
   });
 
-  // уход/сворачивание: звук пропадает
   document.addEventListener("visibilitychange", ()=>{
     if(document.hidden) silenceNow();
     else if(currentVideo) startVideoSmart(currentVideo);
