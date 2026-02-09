@@ -106,11 +106,8 @@
   height:100%;
   display:block;
   object-fit:contain;
+  pointer-events:auto;
 }
-
-/* ✅ ВАЖНО: видео можно "тапнуть" (для нашей невидимой паузы),
-   но нативные контролы всё равно скрыты */
-.rg-video{ pointer-events:auto; }
 
 /* ✅ убираем любые webkit-контролы (iOS/Safari), даже если вдруг появляются */
 .rg-video::-webkit-media-controls,
@@ -127,7 +124,7 @@
   -webkit-appearance:none !important;
 }
 
-/* ✅ невидимая пауза: прозрачная кнопка поверх видео */
+/* ✅ невидимая пауза поверх видео */
 .rg-pause{
   position:absolute;
   inset:0;
@@ -154,11 +151,9 @@
   font-size:14px;
   letter-spacing:.01em;
   line-height:16px;
-
   pointer-events:none;
   user-select:none;
   display:none;
-
   color:#111;
   mix-blend-mode:normal;
   opacity:.9;
@@ -301,13 +296,11 @@
   function stopVideo(){
     if(!activeVideo) return;
     try{ activeVideo.pause(); }catch(e){}
-    // ✅ на стопе гарантированно убираем звук
     try{ activeVideo.muted = true; activeVideo.volume = 0; }catch(e){}
     try{ activeVideo.removeAttribute("src"); activeVideo.load?.(); }catch(e){}
     activeVideo = null;
   }
 
-  // ✅ уход/сворачивание: звук пропадает
   function silenceNow(){
     if(!activeVideo) return;
     try{ activeVideo.pause(); }catch(e){}
@@ -336,21 +329,32 @@
     return false;
   }
 
-  async function startVideoSmart(v, unmuteEl){
-    // 1) пробуем со звуком
+  async function startVideoSmart(v, unmuteEl, setPauseEnabled){
+    if(!unmuteEl) return false;
+
     if(soundUnlocked){
-      if(await tryPlayWithSound(v)){ unmuteEl.classList.remove("is-on"); return true; }
+      if(await tryPlayWithSound(v)){
+        unmuteEl.classList.remove("is-on");
+        if(setPauseEnabled) setPauseEnabled(true);
+        return true;
+      }
     }else{
-      if(await tryPlayWithSound(v)){ soundUnlocked = true; unmuteEl.classList.remove("is-on"); return true; }
+      if(await tryPlayWithSound(v)){
+        soundUnlocked = true;
+        unmuteEl.classList.remove("is-on");
+        if(setPauseEnabled) setPauseEnabled(true);
+        return true;
+      }
     }
 
-    // 2) если нельзя — запускаем muted
     try{
       v.muted = true;
       v.volume = 0;
       await v.play();
     }catch(_){}
+
     unmuteEl.classList.add("is-on");
+    if(setPauseEnabled) setPauseEnabled(false); // ✅ пока tap-for-sound виден — пауза выключена
     return false;
   }
 
@@ -381,11 +385,15 @@
       const unmute = document.createElement("div");
       unmute.className = "rg-unmute";
 
-      // ✅ невидимая пауза поверх видео
       const pauseBtn = document.createElement("button");
       pauseBtn.className = "rg-pause";
       pauseBtn.type = "button";
       pauseBtn.setAttribute("aria-label","Pause/Play");
+
+      const setPauseEnabled = (on)=>{
+        pauseBtn.style.pointerEvents = on ? "auto" : "none";
+      };
+      setPauseEnabled(true);
 
       center.appendChild(v);
       center.appendChild(pauseBtn);
@@ -402,33 +410,40 @@
       v.addEventListener("canplay", hideLoader, {once:true});
       v.onerror = hideLoader;
 
-      // ✅ autoplay smart (звук/без звука) + показываем tap for sound при блоке
-      startVideoSmart(v, unmute);
+      // ✅ autoplay smart + если показали tap-for-sound — блокируем паузу
+      startVideoSmart(v, unmute, setPauseEnabled);
 
-      // tap for sound
-      unmute.addEventListener("click", async ()=>{
+      // ✅ tap for sound: блокируем всплытие и только разлочиваем звук
+      unmute.addEventListener("click", async (e)=>{
+        e.preventDefault();
+        e.stopPropagation();
+        if(e.stopImmediatePropagation) e.stopImmediatePropagation();
+
         try{
           soundUnlocked = true;
           v.muted = false;
           v.volume = 1;
           await v.play();
           unmute.classList.remove("is-on");
-        }catch(e){
+          setPauseEnabled(true);
+        }catch(e2){
           unmute.classList.add("is-on");
+          setPauseEnabled(false);
         }
       });
 
-      // ✅ невидимая пауза: toggle pause/play (без иконки)
+      // ✅ невидимая пауза: toggle pause/play (НО не работает, пока unmute виден)
       pauseBtn.addEventListener("click", async ()=>{
         if(!activeVideo) return;
+
         if(activeVideo.paused){
-          await startVideoSmart(activeVideo, unmute);
+          await startVideoSmart(activeVideo, unmute, setPauseEnabled);
         }else{
           activeVideo.pause();
-          // и сразу убираем звук
           activeVideo.muted = true;
           activeVideo.volume = 0;
           unmute.classList.remove("is-on");
+          setPauseEnabled(true);
         }
       });
 
@@ -502,14 +517,14 @@
   prevBtn.onclick = ()=>show(index - 1);
   nextBtn.onclick = ()=>show(index + 1);
 
-  // ✅ уход со страницы/сворачивание/переключение: звук пропадает
+  // ✅ уход со страницы/сворачивание/переключение: сразу mute+pause
   document.addEventListener("visibilitychange", ()=>{
     if(document.hidden) silenceNow();
     else if(activeVideo){
-      // при возврате — попробуем продолжить корректно
-      // (если звук не разлочен, продолжит muted и покажет tap)
       const unmuteEl = center.querySelector(".rg-unmute");
-      if(unmuteEl) startVideoSmart(activeVideo, unmuteEl);
+      const pauseEl  = center.querySelector(".rg-pause");
+      const setPauseEnabled = (on)=>{ if(pauseEl) pauseEl.style.pointerEvents = on ? "auto" : "none"; };
+      if(unmuteEl) startVideoSmart(activeVideo, unmuteEl, setPauseEnabled);
     }
   });
   window.addEventListener("pagehide", silenceNow, {capture:true});
