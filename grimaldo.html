@@ -21,6 +21,7 @@
   <button class="rg-btn rg-next" type="button">⟩</button>
 </div>
 
+<!-- ✅ прогрев доменов (ускоряет) -->
 <link rel="dns-prefetch" href="//raw.githubusercontent.com">
 <link rel="preconnect" href="https://raw.githubusercontent.com" crossorigin>
 <link rel="dns-prefetch" href="//res.cloudinary.com">
@@ -36,6 +37,7 @@
   background:#fcfcfc;
   z-index:9999;
 }
+
 .rg-wrapper{
   display:flex;
   align-items:center;
@@ -44,6 +46,7 @@
   padding:0 110px;
   box-sizing:border-box;
 }
+
 .rg-sideSlot{
   position:relative;
   width:360px;
@@ -54,6 +57,7 @@
   overflow:hidden;
   margin:0 -290px;
 }
+
 .rg-centerSlot{
   position:relative;
   width:min(1180px, 70vw);
@@ -63,12 +67,14 @@
   justify-content:center;
   overflow:hidden;
 }
+
 .rg-main{
   width:100%;
   height:100%;
   object-fit:contain;
   display:block;
 }
+
 .rg-side{
   width:100%;
   height:100%;
@@ -76,6 +82,7 @@
   opacity:.8;
   display:block;
 }
+
 .rg-btn{
   position:fixed;
   top:50%;
@@ -98,12 +105,14 @@
   -webkit-appearance:none;
   -webkit-tap-highlight-color:transparent;
 }
+
 .rg-btn:focus{ outline:none; }
 .rg-btn:focus-visible{
   outline:2px solid rgba(0,0,0,.25);
   outline-offset:3px;
 }
 .rg-btn:active{ transform:translateY(-50%); }
+
 .rg-prev{ left:80px; }
 .rg-next{ right:80px; }
 
@@ -116,7 +125,7 @@
 .rg-centerSlot, .rg-sideSlot { contain: layout paint size; }
 .rg-main { will-change: contents; }
 
-/* wide */
+/* ✅ если текущий элемент горизонтальный — боковых НЕТ */
 #rg-gallery.rg-wide .rg-sideSlot{ display:none; }
 
 /* loading... */
@@ -130,21 +139,25 @@
   font-size:13px;
   letter-spacing:.01em;
   line-height:16px;
+
   color:#fff;
   mix-blend-mode:difference;
   opacity:.9;
+
   pointer-events:none;
   user-select:none;
   display:none;
 }
 .rg-loading.is-on{ display:block; }
 
+/* ✅ главное: когда медиа грузится — прячем его, а лоадер сверху */
 .rg-side.is-loading,
 .rg-main.is-loading{ opacity:0; }
 
+/* ✅ PATCH: лоадер всегда поверх */
 #rg-gallery .rg-loading{ z-index:999; }
 
-/* sound hint */
+/* подсказка для звука */
 .rg-soundHint{
   position:absolute;
   left:50%;
@@ -166,40 +179,38 @@
 }
 #rg-gallery.rg-needsTap .rg-soundHint{ display:block; }
 
-/* ✅ Apple-like pause icon: circle + two bars (only when paused) */
-.rg-pauseIcon{
+/* ✅ НОВОЕ: кнопка play/pause по центру (без панели controls) */
+.rg-pauseBtn{
   position:absolute;
   left:50%;
   top:50%;
   transform:translate(-50%,-50%);
-  width:52px;
-  height:52px;
-  border-radius:999px;
-  display:none;
-  z-index:998;
-  pointer-events:none;
+  width:92px;
+  height:92px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  border:0;
+  background:transparent;
+  padding:0;
+  margin:0;
+  cursor:pointer;
   user-select:none;
-
-  border:1px solid rgba(0,0,0,.14);
-  background:rgba(255,255,255,.02);
+  -webkit-tap-highlight-color:transparent;
+  z-index:998; /* ниже loading (999), выше видео */
+  opacity:.92;
+}
+.rg-pauseBtn:focus{ outline:none; }
+.rg-pauseIcon{
+  font-family:"SegoeUI","Segoe UI",-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif;
+  font-weight:300;
+  font-size:62px;
+  line-height:1;
+  letter-spacing:0;
+  color:#fff;
   mix-blend-mode:difference;
+  pointer-events:none;
 }
-.rg-pauseIcon.is-on{ display:block; }
-
-.rg-pauseIcon::before,
-.rg-pauseIcon::after{
-  content:"";
-  position:absolute;
-  top:50%;
-  width:7px;
-  height:22px;
-  transform:translateY(-50%);
-  border-radius:999px;
-  background:#fff;
-  opacity:.95;
-}
-.rg-pauseIcon::before{ left:19px; }
-.rg-pauseIcon::after{ right:19px; }
 </style>
 
 <script>
@@ -235,13 +246,22 @@
   const nextBtn=gallery.querySelector(".rg-next");
   if(!left||!right||!center||!prevBtn||!nextBtn) return;
 
+  // sound hint (если браузер блокирует autoplay со звуком)
   const soundHint = document.createElement("button");
   soundHint.type = "button";
   soundHint.className = "rg-soundHint";
   soundHint.textContent = "tap for sound";
 
-  const pauseIcon = document.createElement("div");
+  // ✅ play/pause button overlay (видимая иконка в центре)
+  const pauseBtn = document.createElement("button");
+  pauseBtn.type = "button";
+  pauseBtn.className = "rg-pauseBtn";
+  pauseBtn.setAttribute("aria-label","Pause / Play");
+
+  const pauseIcon = document.createElement("span");
   pauseIcon.className = "rg-pauseIcon";
+  pauseIcon.textContent = "‖"; // pause by default
+  pauseBtn.appendChild(pauseIcon);
 
   const imgCache = new Map();
   const isWideCache = new Map();
@@ -256,33 +276,24 @@
     return el.type==="video" ? (el.poster||"") : (el.src||"");
   }
 
-  function hardMuteAndStop(v){
-    if(!v) return;
-    try{ v.pause(); }catch(e){}
-    try{ v.muted = true; }catch(e){}
-    try{ v.volume = 0; }catch(e){}
-  }
-
   function stopVideo(){
     if(!activeVideo) return;
-    const v = activeVideo;
-    hardMuteAndStop(v);
-    try{ v.removeAttribute("src"); v.load?.(); }catch(e){}
+    try{ activeVideo.pause(); }catch(e){}
+    try{ activeVideo.muted = true; }catch(e){}
+    try{ activeVideo.removeAttribute("src"); activeVideo.load?.(); }catch(e){}
     activeVideo=null;
     gallery.classList.remove("rg-needsTap");
     soundHint.style.display="none";
-    pauseIcon.classList.remove("is-on");
   }
 
-  function onHide(){
-    if(activeVideo) hardMuteAndStop(activeVideo);
-  }
-  window.addEventListener("pagehide", onHide, {passive:true});
-  window.addEventListener("beforeunload", onHide, {passive:true});
+  // ✅ если уходишь со страницы / вкладка скрыта — звук пропадает
+  window.addEventListener("pagehide", stopVideo, {passive:true});
+  window.addEventListener("beforeunload", stopVideo, {passive:true});
   document.addEventListener("visibilitychange", ()=>{
-    if(document.hidden) onHide();
-  });
+    if(document.hidden) stopVideo();
+  }, {passive:true});
 
+  /* ✅ <link rel="preload"> для первых картинок/постеров */
   try{
     const head = document.head || document.getElementsByTagName("head")[0];
     const urls = [];
@@ -378,71 +389,19 @@
     imgEl.src = src || "";
   }
 
-  async function tryPlayWithSound(v){
-    try{
-      v.muted=false;
-      v.volume=1;
-      await v.play();
-      gallery.classList.remove("rg-needsTap");
-      soundHint.style.display="none";
-      return true;
-    }catch(err){
-      try{
-        v.muted=true;
-        v.volume=1;
-        await v.play();
-      }catch(e){}
-      gallery.classList.add("rg-needsTap");
-      soundHint.style.display="block";
-      return false;
-    }
+  function syncPauseIcon(){
+    if(!activeVideo) return;
+    pauseIcon.textContent = activeVideo.paused ? "▶" : "‖";
   }
 
-  function wireHoverAutoplay(v){
-    let userPaused = false;
-
-    const setPauseUI = (on)=> pauseIcon.classList.toggle("is-on", !!on);
-
-    const playAuto = async ()=>{
-      if(!activeVideo || activeVideo!==v) return;
-      if(userPaused) { setPauseUI(true); return; }
-      setPauseUI(false);
-      await tryPlayWithSound(v);
-    };
-
-    const pauseAuto = ()=>{
-      if(!activeVideo || activeVideo!==v) return;
-      hardMuteAndStop(v);
-      setPauseUI(true);
-    };
-
-    // стартовое состояние: paused + иконка видна
-    setPauseUI(true);
-
-    // hover -> play, leave -> pause (но НЕ ломаем ручную паузу)
-    center.addEventListener("mouseenter", playAuto, {passive:true});
-    center.addEventListener("mouseleave", pauseAuto, {passive:true});
-
-    // ✅ клик всегда управляет паузой/плеем (внутри hover тоже)
-    const toggle = async (ev)=>{
-      if(!activeVideo || activeVideo!==v) return;
-      ev.preventDefault();
-
-      if(!v.paused){
-        userPaused = true;
-        hardMuteAndStop(v);
-        setPauseUI(true);
-        return;
-      }
-
-      userPaused = false;
-      setPauseUI(false);
-      await tryPlayWithSound(v);
-    };
-    v.addEventListener("click", toggle);
-
-    v.addEventListener("pause", ()=>setPauseUI(true));
-    v.addEventListener("play", ()=>setPauseUI(false));
+  function togglePlayPause(){
+    if(!activeVideo) return;
+    if(activeVideo.paused){
+      activeVideo.play().catch(()=>{});
+    }else{
+      activeVideo.pause();
+    }
+    syncPauseIcon();
   }
 
   function showCenter(el){
@@ -450,7 +409,6 @@
 
     center.innerHTML = '<span class="rg-loading is-on" aria-hidden="true">loading...</span>';
     center.appendChild(soundHint);
-    center.appendChild(pauseIcon);
 
     if(el.type==="video"){
       const v=document.createElement("video");
@@ -458,11 +416,13 @@
       v.src=el.src;
       if(el.poster) v.poster=el.poster;
 
-      v.autoplay=false;
+      v.autoplay=true;
+      v.muted=false;        // просим звук (может быть заблокирован)
+      v.volume=1;
       v.loop=true;
       v.playsInline=true;
 
-      v.controls=false;
+      v.controls=false;     // ✅ без панели
       v.preload="auto";
 
       v.setAttribute("playsinline","");
@@ -470,41 +430,65 @@
       v.setAttribute("controlslist","nodownload noplaybackrate noremoteplayback");
       v.setAttribute("disablepictureinpicture","");
 
-      // стартово: пауза, без звука (пока не hover/click)
-      v.muted=true;
-      v.volume=1;
-
-      // ✅ фикс “лагающего” лоадера:
-      // прячем лоадер уже на metadata (постер рисуется раньше, чем canplay)
-      const readyFast = ()=>{
+      const ready = ()=>{
         v.classList.remove("is-loading");
         setLoading(center,false);
-        pauseIcon.classList.add("is-on");
       };
-      v.addEventListener("loadedmetadata", readyFast, {once:true});
-      v.addEventListener("loadeddata", readyFast, {once:true});
-      v.addEventListener("canplay", readyFast, {once:true});
+      v.addEventListener("loadeddata", ready, {once:true});
+      v.addEventListener("canplay", ready, {once:true});
+      v.addEventListener("playing", ready, {once:true});
       v.onerror = ()=>{ v.classList.remove("is-loading"); setLoading(center,false); };
+
+      center.appendChild(v);
+
+      // ✅ кнопка pause/play поверх
+      center.appendChild(pauseBtn);
+
+      activeVideo=v;
+
+      // клики по кнопке (и по самому видео тоже)
+      pauseBtn.onclick = (e)=>{ e.preventDefault(); togglePlayPause(); };
+      v.addEventListener("click", (e)=>{ e.preventDefault(); togglePlayPause(); });
+
+      // обновляем иконку при событиях
+      v.addEventListener("play", syncPauseIcon);
+      v.addEventListener("pause", syncPauseIcon);
+      syncPauseIcon();
+
+      // пробуем autoplay со звуком, если не выйдет — запускаем muted и показываем кнопку
+      const tryPlay = async ()=>{
+        try{
+          v.muted=false;
+          await v.play();
+          gallery.classList.remove("rg-needsTap");
+          soundHint.style.display="none";
+        }catch(err){
+          try{
+            v.muted=true;
+            await v.play();
+          }catch(e){}
+          gallery.classList.add("rg-needsTap");
+          soundHint.style.display="block";
+        }
+        syncPauseIcon();
+      };
 
       soundHint.onclick = async ()=>{
         if(!activeVideo) return;
         try{
           activeVideo.muted=false;
-          activeVideo.volume=1;
           await activeVideo.play();
           gallery.classList.remove("rg-needsTap");
           soundHint.style.display="none";
-          pauseIcon.classList.remove("is-on");
         }catch(e){}
+        syncPauseIcon();
       };
 
-      center.appendChild(v);
-      activeVideo=v;
-
-      wireHoverAutoplay(v);
+      tryPlay();
       return;
     }
 
+    // img
     const img=document.createElement("img");
     img.className="rg-main is-loading";
     img.decoding="async";
