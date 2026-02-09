@@ -33,7 +33,7 @@
 #rg-gallery{position:fixed;inset:0;background:#fcfcfc;z-index:9999;overflow:hidden}
 #rg-stage{position:absolute;inset:0;top:-60px;display:flex;align-items:center;justify-content:center;pointer-events:none}
 
-/* ✅ размеры ВЗЯТЫ ОТСЮДА (как ты прислала) */
+/* ✅ размеры ВЗЯТЫ ОТСЮДА */
 #rg-center{
   width:92vw;max-width:560px;
   height:64vh;max-height:640px;
@@ -46,7 +46,7 @@
 .rg-nav{position:absolute;left:50%;bottom:-65px;transform:translateX(-50%);display:flex;gap:25px;pointer-events:auto}
 .rg-btn{font-size:1.6rem;background:none;border:none;color:#666;cursor:pointer;padding:4px 8px;user-select:none;-webkit-tap-highlight-color:transparent}
 
-/* ✅ loading mix-blend (10px, weight 300) */
+/* loading */
 .rg-loading{
   position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
   font-family:"SegoeUI","Segoe UI",-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif;
@@ -56,7 +56,7 @@
 }
 #rg-center.is-loading .rg-loading{display:block}
 
-/* ✅ невидимая пауза/плей по клику (визуально ничего не меняет) */
+/* ✅ невидимая пауза/плей */
 .rg-hit{
   position:absolute;inset:0;
   border:0;padding:0;margin:0;
@@ -65,7 +65,7 @@
   cursor:pointer;
   pointer-events:auto;
   -webkit-tap-highlight-color:transparent;
-  z-index:10; /* над видео/картинкой, но не мешает nav */
+  z-index:10;
 }
 </style>
 
@@ -129,8 +129,8 @@
   }
 
   // ---------- CACHE / PRELOAD ----------
-  const nodeCache = new Map();   // key -> node (img/video)
-  const readyCache = new Map();  // key -> Promise
+  const nodeCache = new Map();
+  const readyCache = new Map();
   const ric = window.requestIdleCallback || ((cb)=>setTimeout(()=>cb({timeRemaining:()=>0}), 120));
 
   function keyOf(el){ return el.type==="video" ? ("v:"+el.src) : ("i:"+el.src); }
@@ -197,7 +197,6 @@
         img.onload = done;
         img.onerror = done;
       } else {
-        // видео: метаданные + постер (чтобы быстрее появился “первый кадр”)
         if(el.poster) ensureReady({type:"img", src: el.poster});
         const v = document.createElement("video");
         v.preload="metadata";
@@ -227,8 +226,15 @@
 
   // ---------- AUTOPLAY / SOUND / LEAVE PAGE ----------
   let currentVideo = null;
+  let progressWatchStop = null;
+
+  function stopProgressWatch(){
+    if(progressWatchStop){ try{ progressWatchStop(); }catch(e){} }
+    progressWatchStop = null;
+  }
 
   function stopCurrentVideoHard(){
+    stopProgressWatch();
     if(!currentVideo) return;
     try{ currentVideo.pause(); }catch(e){}
     try{ currentVideo.muted = true; }catch(e){}
@@ -252,14 +258,75 @@
   }
 
   async function startVideoSmart(v){
-    // 1) пробуем autoplay со звуком
     if(await tryPlayWithSound(v)) return true;
-
-    // 2) если заблокировано — запускаем muted, чтобы видео точно стартовало
     v.muted = true;
     v.volume = 0;
     try{ await v.play(); }catch(e){}
     return false;
+  }
+
+  // ✅ ключевой фикс: держим loading, пока видео реально НЕ ПОШЛО (в т.ч. если виден только постер 10s)
+  function watchVideoProgress(v){
+    let killed = false;
+    let lastT = v.currentTime || 0;
+    let started = false;
+    let timer = null;
+
+    const markStarted = ()=>{
+      if(started) return;
+      started = true;
+      setLoading(false);
+      cleanup();
+    };
+
+    const tick = ()=>{
+      if(killed) return;
+      const ct = v.currentTime || 0;
+
+      // если время двигается — видео реально идёт
+      if(ct > lastT + 0.02){
+        markStarted();
+        return;
+      }
+
+      // если пауза — пусть остаётся как есть (не мигаем)
+      // но если “пытается играть” и буферится — держим loading
+      if(!v.paused && (v.readyState < 3)) setLoading(true);
+
+      lastT = ct;
+    };
+
+    const onPlaying = ()=>{ markStarted(); };
+    const onTime = ()=>{ markStarted(); };
+    const onWaiting = ()=>{ if(!started) setLoading(true); };
+    const onStalled = ()=>{ if(!started) setLoading(true); };
+    const onSeeking = ()=>{ if(!started) setLoading(true); };
+    const onCanPlay = ()=>{ /* не скрываем здесь! */ };
+
+    v.addEventListener("playing", onPlaying);
+    v.addEventListener("timeupdate", onTime);
+    v.addEventListener("waiting", onWaiting);
+    v.addEventListener("stalled", onStalled);
+    v.addEventListener("seeking", onSeeking);
+    v.addEventListener("canplay", onCanPlay);
+
+    // стартуем контроль (чтобы ловить “постер висит 10 секунд”)
+    setLoading(true);
+    timer = setInterval(tick, 250);
+
+    function cleanup(){
+      if(killed) return;
+      killed = true;
+      if(timer) clearInterval(timer);
+      v.removeEventListener("playing", onPlaying);
+      v.removeEventListener("timeupdate", onTime);
+      v.removeEventListener("waiting", onWaiting);
+      v.removeEventListener("stalled", onStalled);
+      v.removeEventListener("seeking", onSeeking);
+      v.removeEventListener("canplay", onCanPlay);
+    }
+
+    return cleanup;
   }
 
   // ---------- невидимая пауза/плей ----------
@@ -273,9 +340,11 @@
     hit.onclick = async ()=>{
       if(!currentVideo) return;
       if(currentVideo.paused){
+        setLoading(true); // если юзер нажал play — покажем loading, пока не пошло
         try{ await currentVideo.play(); }catch(e){}
       }else{
         try{ currentVideo.pause(); }catch(e){}
+        // loading не включаем при паузе (чтобы не путать)
       }
     };
     return hit;
@@ -298,7 +367,6 @@
         img.onerror = finish;
       }
 
-      // вставляем до nav, чтобы nav оставался на месте
       center.insertBefore(img, nav);
       return;
     }
@@ -306,22 +374,17 @@
     const v = ensureVideo(el);
     currentVideo = v;
 
-    // ✅ при долгой загрузке видео лоадер всегда включен
-    const showLoad = ()=>setLoading(true);
-    const hideLoad = ()=>setLoading(false);
-
-    v.addEventListener("loadstart", showLoad);
-    v.addEventListener("stalled", showLoad);
-    v.addEventListener("waiting", showLoad);
-
-    v.onplaying = hideLoad;
-    v.onloadeddata = hideLoad;
-    v.onerror = ()=>{ setLoading(false); };
-
+    // вставляем видео + невидимую паузу
     center.insertBefore(v, nav);
-
-    // невидимая пауза поверх
     center.insertBefore(ensureHit(), nav);
+
+    // ✅ лоадер держим до реального старта
+    stopProgressWatch();
+    progressWatchStop = watchVideoProgress(v);
+
+    // если сеть/буфер — всегда включаем обратно
+    v.addEventListener("loadstart", ()=>setLoading(true));
+    v.addEventListener("error", ()=>setLoading(false), {once:true});
 
     startVideoSmart(v);
   }
@@ -349,7 +412,7 @@
   prevBtn.onclick = ()=>show(index-1);
   nextBtn.onclick = ()=>show(index+1);
 
-  // быстрый старт
+  // старт
   preloadAround(0);
   show(0);
 })();
