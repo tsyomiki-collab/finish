@@ -10,7 +10,7 @@
     <div id="rg-center" class="rg-centerSlot">
       <span class="rg-loading is-on" aria-hidden="true">loading...</span>
 
-      <!-- ✅ ДОБАВИЛ: прозрачная кнопка-пауза поверх видео -->
+      <!-- ✅ прозрачная кнопка-пауза поверх видео -->
       <button class="rg-pauseHit" type="button" aria-label="Toggle pause"></button>
     </div>
 
@@ -111,7 +111,7 @@
   background:transparent;
 }
 
-/* ✅ УБИРАЕМ ЛЮБЫЕ НАТИВНЫЕ КНОПКИ/ПАНЕЛИ (iOS/Safari) */
+/* ✅ УБИРАЕМ НАТИВНЫЕ КНОПКИ/ПАНЕЛИ (iOS/Safari) */
 .rg-video::-webkit-media-controls,
 .rg-video::-webkit-media-controls-panel,
 .rg-video::-webkit-media-controls-play-button,
@@ -128,7 +128,6 @@
 .rg-video{ pointer-events:none; }    /* видео не кликаем */
 .rg-unmute{ pointer-events:auto; }   /* но tap-for-sound кликаем */
 
-/* loading... */
 .rg-loading{
   position:absolute;
   left:50%;
@@ -181,7 +180,7 @@
   border-radius:999px;
 }
 
-/* ✅ НОВОЕ: прозрачная пауза поверх всего центра (только когда видео) */
+/* ✅ прозрачная пауза поверх всего центра (только когда видео) */
 .rg-pauseHit{
   position:absolute;
   inset:0;
@@ -320,6 +319,7 @@
     center.classList.remove("has-video");
   }
 
+  /* ✅ звук пропадает когда юзер уходит/сворачивает */
   function silenceNow(){
     if(!activeVideo) return;
     try{ activeVideo.pause(); }catch(e){}
@@ -352,14 +352,7 @@
     return false;
   }
 
-  // ✅ как в “железном” варианте: если unmute показан — паузу выключаем
-  function setNeedsTap(on){
-    if(pauseHit) pauseHit.style.pointerEvents = on ? "none" : "auto";
-  }
-
   async function startVideoSmart(v, unmuteEl){
-    setNeedsTap(false);
-
     if(soundUnlocked){
       if(await tryPlayWithSound(v)){
         if(unmuteEl) unmuteEl.classList.remove("is-on");
@@ -381,13 +374,16 @@
     }catch(_){}
 
     if(unmuteEl) unmuteEl.classList.add("is-on");
-    setNeedsTap(true);
     return false;
   }
 
   function showCenter(item){
     stopVideo();
-    center.innerHTML = '<span class="rg-loading is-on" aria-hidden="true">loading...</span><button class="rg-pauseHit" type="button" aria-label="Toggle pause"></button>';
+
+    // сохраняем overlay кнопку в DOM
+    center.innerHTML =
+      '<span class="rg-loading is-on" aria-hidden="true">loading...</span>' +
+      '<button class="rg-pauseHit" type="button" aria-label="Toggle pause"></button>';
 
     const _pauseHit = center.querySelector(".rg-pauseHit");
 
@@ -403,7 +399,6 @@
       v.preload = "auto";
 
       v.controls = false;
-      v.setAttribute("controls", "false");
       v.setAttribute("playsinline", "");
       v.setAttribute("webkit-playsinline", "");
       v.setAttribute("controlslist", "nodownload noplaybackrate noremoteplayback");
@@ -426,12 +421,11 @@
       v.addEventListener("playing", hideLoader, {once:true});
       v.addEventListener("loadeddata", hideLoader, {once:true});
       v.addEventListener("canplay", hideLoader, {once:true});
-      v.onerror = ()=>{ hideLoader(); };
+      v.onerror = hideLoader;
 
-      // ✅ прозрачная пауза: toggle pause/play (но не работает пока нужен tap)
+      // ✅ прозрачная пауза: toggle pause/play
       _pauseHit.addEventListener("click", async (e)=>{
         e.preventDefault();
-        if(!_pauseHit || _pauseHit.style.pointerEvents === "none") return;
         const vid = activeVideo;
         if(!vid) return;
 
@@ -443,7 +437,7 @@
         }
       });
 
-      // ✅ tap for sound: только разлочивает звук, и не даёт “протечь” клику
+      // tap for sound
       unmute.addEventListener("click", async (e)=>{
         e.preventDefault();
         e.stopPropagation();
@@ -455,10 +449,8 @@
           v.volume = 1;
           await v.play();
           unmute.classList.remove("is-on");
-          setNeedsTap(false);
         }catch(e2){
           unmute.classList.add("is-on");
-          setNeedsTap(true);
         }
       });
 
@@ -466,7 +458,6 @@
       return;
     }
 
-    // image
     center.classList.remove("has-video");
 
     const img = document.createElement("img");
@@ -522,31 +513,15 @@
   prevBtn.addEventListener("click", ()=>show(index - 1));
   nextBtn.addEventListener("click", ()=>show(index + 1));
 
-  // ✅ железный свайп: только если реально был горизонтальный MOVE (не тап)
-  let sx=0, sy=0, dx=0, dy=0, moved=false;
-
-  gallery.addEventListener("touchstart", (e)=>{
-    const t = e.touches[0];
-    sx = t.clientX; sy = t.clientY;
-    dx = 0; dy = 0;
-    moved = false;
+  // свайп
+  let sx=0;
+  gallery.addEventListener("touchstart", (e)=>{ sx = e.touches[0].clientX; }, {passive:true});
+  gallery.addEventListener("touchend", (e)=>{
+    const dx = e.changedTouches[0].clientX - sx;
+    if(Math.abs(dx) > 40) dx < 0 ? show(index+1) : show(index-1);
   }, {passive:true});
 
-  gallery.addEventListener("touchmove", (e)=>{
-    const t = e.touches[0];
-    dx = t.clientX - sx;
-    dy = t.clientY - sy;
-    if(Math.abs(dx) > 10 || Math.abs(dy) > 10) moved = true;
-  }, {passive:true});
-
-  gallery.addEventListener("touchend", ()=>{
-    if(!moved) return;
-    if(Math.abs(dx) <= Math.abs(dy)) return;
-    if(Math.abs(dx) < 70) return;
-    dx < 0 ? show(index+1) : show(index-1);
-  }, {passive:true});
-
-  // ✅ уход/сворачивание: звук пропадает
+  // ✅ уход/сворачивание/выход — сразу mute+pause
   document.addEventListener("visibilitychange", ()=>{
     if(document.hidden) silenceNow();
     else if(activeVideo){
