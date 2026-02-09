@@ -9,6 +9,9 @@
 
     <div id="rg-center" class="rg-centerSlot">
       <span class="rg-loading is-on" aria-hidden="true">loading...</span>
+
+      <!-- ✅ ДОБАВИЛ: прозрачная кнопка-пауза поверх видео -->
+      <button class="rg-pauseHit" type="button" aria-label="Toggle pause"></button>
     </div>
 
     <div class="rg-sideSlot">
@@ -108,7 +111,7 @@
   background:transparent;
 }
 
-/* убираем нативные панели iOS/Safari */
+/* ✅ УБИРАЕМ ЛЮБЫЕ НАТИВНЫЕ КНОПКИ/ПАНЕЛИ (iOS/Safari) */
 .rg-video::-webkit-media-controls,
 .rg-video::-webkit-media-controls-panel,
 .rg-video::-webkit-media-controls-play-button,
@@ -122,25 +125,10 @@
   display:none !important;
   -webkit-appearance:none !important;
 }
+.rg-video{ pointer-events:none; }    /* видео не кликаем */
+.rg-unmute{ pointer-events:auto; }   /* но tap-for-sound кликаем */
 
-.rg-video{ pointer-events:none; }
-.rg-unmute{ pointer-events:auto; }
-
-/* прозрачная кнопка паузы */
-.rg-pauseHit{
-  position:absolute;
-  inset:0;
-  z-index:900;
-  background:transparent;
-  border:0;
-  padding:0;
-  margin:0;
-  cursor:pointer;
-  -webkit-tap-highlight-color:transparent;
-  pointer-events:auto;
-}
-
-/* loading */
+/* loading... */
 .rg-loading{
   position:absolute;
   left:50%;
@@ -193,6 +181,22 @@
   border-radius:999px;
 }
 
+/* ✅ НОВОЕ: прозрачная пауза поверх всего центра (только когда видео) */
+.rg-pauseHit{
+  position:absolute;
+  inset:0;
+  z-index:1000;            /* ниже unmute(1001), выше видео */
+  display:none;
+  background:transparent;
+  border:0;
+  padding:0;
+  margin:0;
+  cursor:pointer;
+  pointer-events:auto;
+  -webkit-tap-highlight-color:transparent;
+}
+#rg-center.has-video .rg-pauseHit{ display:block; }
+
 .rg-btn{
   position:fixed;
   top:50%;
@@ -215,6 +219,11 @@
   -webkit-appearance:none;
   -webkit-tap-highlight-color:transparent;
 }
+.rg-btn:focus{ outline:none; }
+.rg-btn:focus-visible{
+  outline:2px solid rgba(0,0,0,.25);
+  outline-offset:3px;
+}
 .rg-prev{ left:80px; }
 .rg-next{ right:80px; }
 
@@ -222,6 +231,9 @@
   .rg-sideSlot{ display:none; }
   .rg-centerSlot{ width:92vw; }
 }
+
+.rg-centerSlot, .rg-sideSlot { contain: layout paint size; }
+.rg-main { will-change: contents; }
 </style>
 
 <script>
@@ -230,7 +242,7 @@
   if(!gallery || gallery.dataset.rgInit === "1") return;
   gallery.dataset.rgInit = "1";
 
-  const elements = [
+  const elements=[
     {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/midnight/main/1.jpg", wide:true},
     {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/midnight/main/2.jpg", wide:true},
     {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/midnight/main/3.jpg"},
@@ -239,72 +251,316 @@
     {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/midnight/main/6.jpg"},
     {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/midnight/main/7.jpg"},
     {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/midnight/main/8.jpg", wide:true},
-    {type:'video',src:"https://res.cloudinary.com/dmtnse4sz/video/upload/v1769859479/9_tz6zq9.mp4"},
+    {
+      type:'video',
+      src:"https://res.cloudinary.com/dmtnse4sz/video/upload/v1769859479/9_tz6zq9.mp4",
+      poster:"https://raw.githubusercontent.com/tsyomiki-collab/midnight/main/Screenshot%202026-01-31%20at%2015.42.16.png"
+    },
     {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/midnight/main/10.jpg"},
     {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/midnight/main/11.jpg"}
   ];
 
-  let index = 0;
-  const left = document.getElementById("rg-left");
-  const right = document.getElementById("rg-right");
-  const center = document.getElementById("rg-center");
+  let index = 0, token = 0;
 
-  function stopAllVideos(){
-    const vids = gallery.querySelectorAll("video");
-    vids.forEach(v=>{
-      try{ v.muted = true; v.pause(); }catch(e){}
-    });
+  const left    = document.getElementById("rg-left");
+  const right   = document.getElementById("rg-right");
+  const center  = document.getElementById("rg-center");
+  const prevBtn = gallery.querySelector(".rg-prev");
+  const nextBtn = gallery.querySelector(".rg-next");
+  if(!left || !right || !center || !prevBtn || !nextBtn) return;
+
+  const preloadCache = new Map();
+  let activeVideo = null;
+  let soundUnlocked = false;
+
+  const pauseHit = center.querySelector(".rg-pauseHit");
+
+  function thumbSrc(item){
+    if(!item) return "";
+    return item.type === "video" ? (item.poster || "") : (item.src || "");
   }
 
-  function show(i){
-    if(i < 0) i = elements.length - 1;
-    if(i >= elements.length) i = 0;
-    index = i;
+  function preload(src, priority){
+    if(!src) return Promise.resolve(false);
+    if(preloadCache.has(src)) return preloadCache.get(src);
 
-    const item = elements[i];
-    center.innerHTML = '<span class="rg-loading is-on">loading...</span>';
+    const p = new Promise(resolve=>{
+      const img = new Image();
+      img.decoding = "async";
+      try{ if(priority) img.fetchPriority = priority; }catch(e){}
+      img.onload = () => resolve(true);
+      img.onerror = () => resolve(false);
+      img.src = src;
+    });
+
+    preloadCache.set(src, p);
+    return p;
+  }
+
+  function setLoading(slotEl, on){
+    const l = slotEl.querySelector(".rg-loading");
+    if(l) l.classList.toggle("is-on", !!on);
+  }
+
+  function setSidesHidden(h){
+    left.style.visibility  = h ? "hidden" : "visible";
+    right.style.visibility = h ? "hidden" : "visible";
+  }
+
+  function markSide(imgEl, item){
+    imgEl.classList.toggle("rg-wide", !!(item && item.wide));
+  }
+
+  function stopVideo(){
+    if(!activeVideo) return;
+    try{ activeVideo.pause(); }catch(e){}
+    try{ activeVideo.muted = true; activeVideo.volume = 0; }catch(e){}
+    try{ activeVideo.removeAttribute("src"); activeVideo.load?.(); }catch(e){}
+    activeVideo = null;
+    center.classList.remove("has-video");
+  }
+
+  function silenceNow(){
+    if(!activeVideo) return;
+    try{ activeVideo.pause(); }catch(e){}
+    try{ activeVideo.muted = true; activeVideo.volume = 0; }catch(e){}
+  }
+
+  function setSide(imgEl, item){
+    const slot = imgEl.parentElement;
+    setLoading(slot, true);
+
+    imgEl.classList.add("is-loading");
+    imgEl.decoding = "async";
+    imgEl.loading = "eager";
+    try{ imgEl.fetchPriority = "low"; }catch(e){}
+
+    imgEl.onload = ()=>{ imgEl.classList.remove("is-loading"); setLoading(slot,false); };
+    imgEl.onerror= ()=>{ imgEl.classList.remove("is-loading"); setLoading(slot,false); };
+
+    imgEl.src = thumbSrc(item) || "";
+    markSide(imgEl, item);
+  }
+
+  async function tryPlayWithSound(v){
+    try{
+      v.muted = false;
+      v.volume = 1;
+      await v.play();
+      return true;
+    }catch(e){}
+    return false;
+  }
+
+  // ✅ как в “железном” варианте: если unmute показан — паузу выключаем
+  function setNeedsTap(on){
+    if(pauseHit) pauseHit.style.pointerEvents = on ? "none" : "auto";
+  }
+
+  async function startVideoSmart(v, unmuteEl){
+    setNeedsTap(false);
+
+    if(soundUnlocked){
+      if(await tryPlayWithSound(v)){
+        if(unmuteEl) unmuteEl.classList.remove("is-on");
+        return true;
+      }
+    }else{
+      if(await tryPlayWithSound(v)){
+        soundUnlocked = true;
+        if(unmuteEl) unmuteEl.classList.remove("is-on");
+        return true;
+      }
+    }
+
+    // fallback muted autoplay
+    try{
+      v.muted = true;
+      v.volume = 0;
+      await v.play();
+    }catch(_){}
+
+    if(unmuteEl) unmuteEl.classList.add("is-on");
+    setNeedsTap(true);
+    return false;
+  }
+
+  function showCenter(item){
+    stopVideo();
+    center.innerHTML = '<span class="rg-loading is-on" aria-hidden="true">loading...</span><button class="rg-pauseHit" type="button" aria-label="Toggle pause"></button>';
+
+    const _pauseHit = center.querySelector(".rg-pauseHit");
 
     if(item.type === "video"){
       const v = document.createElement("video");
-      v.className = "rg-video";
+      v.className = "rg-video is-loading";
       v.src = item.src;
+      if(item.poster) v.poster = item.poster;
+
       v.autoplay = true;
       v.loop = true;
       v.playsInline = true;
       v.preload = "auto";
 
       v.controls = false;
-      v.removeAttribute("controls"); // FIX Safari
+      v.setAttribute("controls", "false");
+      v.setAttribute("playsinline", "");
+      v.setAttribute("webkit-playsinline", "");
+      v.setAttribute("controlslist", "nodownload noplaybackrate noremoteplayback");
+      v.setAttribute("disablepictureinpicture", "");
+      v.setAttribute("disableRemotePlayback", "");
 
-      v.muted = true;
-      v.volume = 0;
-      v.setAttribute("muted","");
-
-      const pauseHit = document.createElement("button");
-      pauseHit.className = "rg-pauseHit";
-      pauseHit.onclick = ()=>{
-        if(v.paused) v.play();
-        else v.pause();
-      };
+      const unmute = document.createElement("div");
+      unmute.className = "rg-unmute";
 
       center.appendChild(v);
-      center.appendChild(pauseHit);
+      center.appendChild(unmute);
+
+      activeVideo = v;
+      center.classList.add("has-video");
+
+      const hideLoader = ()=>{
+        v.classList.remove("is-loading");
+        setLoading(center, false);
+      };
+      v.addEventListener("playing", hideLoader, {once:true});
+      v.addEventListener("loadeddata", hideLoader, {once:true});
+      v.addEventListener("canplay", hideLoader, {once:true});
+      v.onerror = ()=>{ hideLoader(); };
+
+      // ✅ прозрачная пауза: toggle pause/play (но не работает пока нужен tap)
+      _pauseHit.addEventListener("click", async (e)=>{
+        e.preventDefault();
+        if(!_pauseHit || _pauseHit.style.pointerEvents === "none") return;
+        const vid = activeVideo;
+        if(!vid) return;
+
+        if(vid.paused){
+          await startVideoSmart(vid, unmute);
+        }else{
+          try{ vid.pause(); }catch(err){}
+          try{ vid.muted = true; vid.volume = 0; }catch(err){}
+        }
+      });
+
+      // ✅ tap for sound: только разлочивает звук, и не даёт “протечь” клику
+      unmute.addEventListener("click", async (e)=>{
+        e.preventDefault();
+        e.stopPropagation();
+        if(e.stopImmediatePropagation) e.stopImmediatePropagation();
+
+        soundUnlocked = true;
+        try{
+          v.muted = false;
+          v.volume = 1;
+          await v.play();
+          unmute.classList.remove("is-on");
+          setNeedsTap(false);
+        }catch(e2){
+          unmute.classList.add("is-on");
+          setNeedsTap(true);
+        }
+      });
+
+      startVideoSmart(v, unmute);
       return;
     }
 
+    // image
+    center.classList.remove("has-video");
+
     const img = document.createElement("img");
-    img.className = "rg-main";
+    img.className = "rg-main is-loading";
+    img.decoding = "async";
+    img.loading = "eager";
+    try{ img.fetchPriority = "high"; }catch(e){}
+
+    img.onload = ()=>{ img.classList.remove("is-loading"); setLoading(center,false); };
+    img.onerror= ()=>{ img.classList.remove("is-loading"); setLoading(center,false); };
+
     img.src = item.src;
     center.appendChild(img);
   }
 
-  gallery.querySelector(".rg-prev").onclick = ()=>show(index - 1);
-  gallery.querySelector(".rg-next").onclick = ()=>show(index + 1);
+  async function show(i){
+    const t = ++token;
 
+    if(i < 0) i = elements.length - 1;
+    if(i >= elements.length) i = 0;
+    index = i;
+
+    const p = (i - 1 + elements.length) % elements.length;
+    const n = (i + 1) % elements.length;
+
+    setLoading(left.parentElement, true);
+    setLoading(right.parentElement, true);
+    setLoading(center, true);
+
+    await Promise.all([
+      preload(thumbSrc(elements[i]), "high"),
+      preload(thumbSrc(elements[p]), "low"),
+      preload(thumbSrc(elements[n]), "low")
+    ]);
+    if(t !== token) return;
+
+    setSide(left,  elements[p]);
+    setSide(right, elements[n]);
+    showCenter(elements[i]);
+
+    setSidesHidden(!!elements[i].wide && elements[i].type !== "video");
+
+    const p2 = (p - 1 + elements.length) % elements.length;
+    const n2 = (n + 1) % elements.length;
+    const bg = ()=>{
+      preload(thumbSrc(elements[p2]), "low");
+      preload(thumbSrc(elements[n2]), "low");
+    };
+    if("requestIdleCallback" in window) requestIdleCallback(bg, {timeout:600});
+    else setTimeout(bg, 0);
+  }
+
+  prevBtn.addEventListener("click", ()=>show(index - 1));
+  nextBtn.addEventListener("click", ()=>show(index + 1));
+
+  // ✅ железный свайп: только если реально был горизонтальный MOVE (не тап)
+  let sx=0, sy=0, dx=0, dy=0, moved=false;
+
+  gallery.addEventListener("touchstart", (e)=>{
+    const t = e.touches[0];
+    sx = t.clientX; sy = t.clientY;
+    dx = 0; dy = 0;
+    moved = false;
+  }, {passive:true});
+
+  gallery.addEventListener("touchmove", (e)=>{
+    const t = e.touches[0];
+    dx = t.clientX - sx;
+    dy = t.clientY - sy;
+    if(Math.abs(dx) > 10 || Math.abs(dy) > 10) moved = true;
+  }, {passive:true});
+
+  gallery.addEventListener("touchend", ()=>{
+    if(!moved) return;
+    if(Math.abs(dx) <= Math.abs(dy)) return;
+    if(Math.abs(dx) < 70) return;
+    dx < 0 ? show(index+1) : show(index-1);
+  }, {passive:true});
+
+  // ✅ уход/сворачивание: звук пропадает
   document.addEventListener("visibilitychange", ()=>{
-    if(document.hidden) stopAllVideos();
+    if(document.hidden) silenceNow();
+    else if(activeVideo){
+      const unmuteEl = center.querySelector(".rg-unmute");
+      if(unmuteEl) startVideoSmart(activeVideo, unmuteEl);
+    }
   });
-  window.addEventListener("pagehide", stopAllVideos, {capture:true});
+  window.addEventListener("pagehide", silenceNow, {capture:true});
+  window.addEventListener("beforeunload", silenceNow, {capture:true});
+  window.addEventListener("blur", ()=>{ if(document.hidden) return; silenceNow(); }, {capture:true});
+
+  preload(thumbSrc(elements[0]), "high");
+  preload(thumbSrc(elements[1]), "low");
+  preload(thumbSrc(elements[2]), "low");
 
   show(0);
 })();
