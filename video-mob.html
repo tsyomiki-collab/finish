@@ -37,7 +37,6 @@
 
 #rg-gallery{position:fixed;inset:0;background:#fcfcfc;z-index:9999;overflow:hidden}
 
-/* ✅ FIX: НЕЛЬЗЯ pointer-events:none, иначе жест “ломается” */
 #rg-stage{
   position:absolute;inset:0;top:-60px;
   display:flex;align-items:center;justify-content:center;
@@ -93,6 +92,10 @@
   border:1px solid rgba(0,0,0,.14);
   border-radius:999px;
   -webkit-tap-highlight-color:transparent;
+
+  user-select:none;
+  -webkit-user-select:none;
+  touch-action:manipulation;
 }
 #rg-center.needs-tap .rg-tap{display:block}
 
@@ -108,6 +111,7 @@
   margin:0;
   cursor:pointer;
   -webkit-tap-highlight-color:transparent;
+  touch-action:manipulation;
 }
 #rg-center.has-video .rg-pauseHit{display:block}
 </style>
@@ -203,7 +207,6 @@
 
     v.autoplay=true;
     v.setAttribute("autoplay","");
-
     v.loop=true;
     v.controls=false;
 
@@ -218,7 +221,7 @@
 
     if(el.poster) v.poster=el.poster;
 
-    // ✅ важно: muted ДО src (и атрибут тоже)
+    // muted ДО src
     v.muted=true;
     v.setAttribute("muted","");
     v.volume=0;
@@ -268,31 +271,21 @@
     }
   }
 
-  // ✅ максимально быстро стартуем muted (чтобы tap был только unmute)
+  // автоплей muted: сразу после append + серия повторов
   function forceAutoplayMuted(v){
-    let tries=0;
-    const MAX=50;
+    let tries=0, MAX=60;
 
     const attempt=()=>{
       if(!v) return;
       if(!v.paused) return;
       tries++;
 
-      try{
-        v.muted=true;
-        v.volume=0;
-        v.setAttribute("muted","");
-      }catch(e){}
-
+      try{ v.muted=true; v.volume=0; v.setAttribute("muted",""); }catch(e){}
       const p=v.play();
-      if(p && typeof p.catch==="function"){
-        p.catch(()=>{ if(tries<MAX) requestAnimationFrame(attempt); });
-      }else{
-        if(tries<MAX) requestAnimationFrame(attempt);
-      }
+      if(p && p.catch) p.catch(()=>{ if(tries<MAX) requestAnimationFrame(attempt); });
+      else if(tries<MAX) requestAnimationFrame(attempt);
     };
 
-    // сразу серия попыток
     attempt();
     requestAnimationFrame(attempt);
     setTimeout(attempt, 0);
@@ -311,84 +304,90 @@
       v.muted=false;
       v.removeAttribute("muted");
       v.volume=1;
-      await v.play(); // если уже играет muted — это почти мгновенно
+      await v.play();
       return true;
     }catch(e){}
     return false;
-  }
-
-  function showTapIfNeeded(on){
-    setNeedsTap(!!on);
   }
 
   async function unlockSound(){
     if(!currentVideo) return;
     soundUnlocked = true;
 
-    // 1) попытка в жесте
     if(await tryPlayWithSound(currentVideo)){
-      showTapIfNeeded(false);
+      setNeedsTap(false);
       return;
     }
-
-    // 2) попытка на следующий кадр (iOS iframe)
     await new Promise(r=>requestAnimationFrame(r));
     if(await tryPlayWithSound(currentVideo)){
-      showTapIfNeeded(false);
+      setNeedsTap(false);
       return;
     }
-
-    showTapIfNeeded(true);
+    setNeedsTap(true);
   }
 
-  // ✅ tap: блокируем “протекание” + анмьютим в gesture
-  function swallow(e){
-    e.preventDefault();
+  // ✅ ключевой фикс клика: на start НЕ preventDefault
+  function stopOnly(e){
     e.stopPropagation();
     if(e.stopImmediatePropagation) e.stopImmediatePropagation();
   }
+  function swallowOnEnd(e){
+    e.preventDefault();
+    stopOnly(e);
+  }
 
-  tapBtn.addEventListener("pointerdown",(e)=>{
+  // TAP: start = stopOnly, end/up = unlock (это самый стабильный gesture в iOS iframe)
+  tapBtn.addEventListener("pointerdown", (e)=>{
     if(!center.classList.contains("needs-tap")) return;
-    swallow(e);
+    stopOnly(e);
   }, true);
 
-  tapBtn.addEventListener("touchstart",(e)=>{
+  tapBtn.addEventListener("touchstart", (e)=>{
     if(!center.classList.contains("needs-tap")) return;
-    swallow(e);
-  }, {passive:false, capture:true});
+    stopOnly(e);
+  }, {passive:true, capture:true});
 
-  tapBtn.addEventListener("click", async (e)=>{
+  tapBtn.addEventListener("pointerup", async (e)=>{
     if(!center.classList.contains("needs-tap")) return;
-    swallow(e);
+    swallowOnEnd(e);
     await unlockSound();
   }, true);
 
-  // пауза: только когда tap не нужен
+  tapBtn.addEventListener("touchend", async (e)=>{
+    if(!center.classList.contains("needs-tap")) return;
+    swallowOnEnd(e);
+    await unlockSound();
+  }, {passive:false, capture:true});
+
+  // backup
+  tapBtn.addEventListener("click", async (e)=>{
+    if(!center.classList.contains("needs-tap")) return;
+    e.preventDefault();
+    stopOnly(e);
+    await unlockSound();
+  }, true);
+
+  // pause: только когда needs-tap=false
   pauseHit.addEventListener("click", async (e)=>{
     e.preventDefault();
     const v=currentVideo;
     if(!v) return;
-    if(center.classList.contains("needs-tap")) return; // ✅ первый жест только звук
+    if(center.classList.contains("needs-tap")) return;
 
     if(v.paused){
-      // если звук уже разрешён — попробуем со звуком, иначе хотя бы muted
-      if(soundUnlocked){
-        await tryPlayWithSound(v);
-      }else{
-        forceAutoplayMuted(v);
-      }
+      if(soundUnlocked) await tryPlayWithSound(v);
+      else forceAutoplayMuted(v);
     }else{
       try{ v.pause(); }catch(_){}
       try{ v.muted=true; v.volume=0; v.setAttribute("muted",""); }catch(_){}
-      showTapIfNeeded(false);
+      setNeedsTap(false);
     }
   });
 
   function showCenter(el){
     clearCenterKeepUI();
     setHasVideo(false);
-    showTapIfNeeded(false);
+    setNeedsTap(false);
 
     if(currentVideo){
       hardMuteAndStop(currentVideo);
@@ -403,20 +402,19 @@
     const v=ensureVideo(el);
     center.insertBefore(v, navEl);
     currentVideo=v;
-
     setHasVideo(true);
 
-    // ✅ ключевое: стартуем autoplay muted СРАЗУ
+    // ✅ самый важный момент: autoplay muted СРАЗУ после вставки
     forceAutoplayMuted(v);
 
-    // если звук не разлочен — показываем тап (но видео уже должно играть muted)
-    if(!soundUnlocked) showTapIfNeeded(true);
+    // показываем pill если звук ещё не разлочен
+    if(!soundUnlocked) setNeedsTap(true);
   }
 
   function preloadAround(i){
     const n=fastElements.length;
     const prev=(i-1+n)%n;
-    const next=(i+1+n)%n;
+    const next=(i+1)%n;
 
     ensureReady(fastElements[i]);
     ensureReady(fastElements[prev]);
@@ -431,16 +429,15 @@
   async function show(i){
     const t=++token;
     const n=fastElements.length;
-
     if(i<0)i=n-1;
     if(i>=n)i=0;
     index=i;
 
     setLoading(true);
-    showTapIfNeeded(false);
+    setNeedsTap(false);
+
     preloadAround(i);
 
-    // ✅ картинки ждём decode, видео — не ждём (монтируем сразу и пусть буферится)
     const item = fastElements[i];
     if(item.type==="img"){
       await ensureReady(item);
@@ -454,9 +451,8 @@
   prevBtn.onclick=()=>show(index-1);
   nextBtn.onclick=()=>show(index+1);
 
-  // свайп (железный)
+  // свайп
   let sx=0, sy=0, dx=0, dy=0, moved=false;
-
   gallery.addEventListener("touchstart", (e)=>{
     const t = e.touches[0];
     sx = t.clientX; sy = t.clientY;
@@ -478,7 +474,6 @@
     dx < 0 ? show(index+1) : show(index-1);
   }, {passive:true});
 
-  // уход/сворачивание: звук пропадает
   document.addEventListener("visibilitychange", ()=>{
     if(document.hidden) stopAllVideosNow();
     else if(!document.hidden && currentVideo) forceAutoplayMuted(currentVideo);
