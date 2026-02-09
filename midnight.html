@@ -305,7 +305,11 @@
 
   function hardMuteAndStop(v){
     if(!v) return;
-    try{ v.muted = true; v.volume = 0; v.setAttribute("muted",""); }catch(e){}
+    try{
+      v.muted = true;
+      v.volume = 0;
+      v.setAttribute("muted","");
+    }catch(e){}
     try{ v.pause(); }catch(e){}
   }
 
@@ -318,9 +322,12 @@
 
   function stopAllVideosNow(){
     if(activeVideo) hardMuteAndStop(activeVideo);
-    for(const v of videoCache){
-      hardMuteAndStop(v);
-    }
+    for(const v of videoCache) hardMuteAndStop(v);
+  }
+
+  // ✅ надежное отключение звука при уходе/сворачивании/переключении
+  function killSoundOnExit(){
+    stopAllVideosNow();
   }
 
   function setSide(imgEl, item){
@@ -487,12 +494,13 @@
   prevBtn.addEventListener("click", ()=>show(index - 1));
   nextBtn.addEventListener("click", ()=>show(index + 1));
 
-  // ✅ убрать звук при выходе/сворачивании страницы
+  // ✅ убрать звук при выходе/сворачивании страницы (максимально надежно)
   document.addEventListener("visibilitychange", ()=>{
-    if(document.hidden) stopAllVideosNow();
+    if(document.hidden) killSoundOnExit();
   });
-  window.addEventListener("pagehide", stopAllVideosNow, {capture:true});
-  window.addEventListener("beforeunload", stopAllVideosNow, {capture:true});
+  window.addEventListener("pagehide", killSoundOnExit, {capture:true});
+  window.addEventListener("beforeunload", killSoundOnExit, {capture:true});
+  window.addEventListener("blur", killSoundOnExit, {capture:true});   /* ✅ iOS часто срабатывает именно так */
 
   preload(thumbSrc(elements[0]), "high");
   preload(thumbSrc(elements[1]), "low");
