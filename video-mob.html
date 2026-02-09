@@ -4,7 +4,7 @@
       <span class="rg-loading is-on" aria-hidden="true">loading...</span>
 
       <!-- tap for sound -->
-      <span class="rg-unmute" role="button" aria-label="Tap for sound"></span>
+      <span class="rg-unmute" role="button" aria-label="Tap for sound" tabindex="0"></span>
 
       <!-- невидимая пауза -->
       <button class="rg-pause" type="button" aria-label="Pause/Play"></button>
@@ -301,7 +301,10 @@
     await new Promise(r=>requestAnimationFrame(r));
     if(await tryPlayWithSound(currentVideo)) return;
 
-    setUnmute(true);
+    setTimeout(async ()=>{
+      if(currentVideo && (await tryPlayWithSound(currentVideo))) setUnmute(false);
+      else setUnmute(true);
+    }, 80);
   }
 
   function stopVideo(){
@@ -381,26 +384,37 @@
     if(Math.abs(d)>40){ d<0?show(index+1):show(index-1) }
   },{passive:true});
 
-  function swallow(e){
-    e.preventDefault();
+  // ✅ ВАЖНО: на pointerdown/touchstart НЕ делаем preventDefault (иначе iOS ломает gesture)
+  function stopOnly(e){
     e.stopPropagation();
     if(e.stopImmediatePropagation) e.stopImmediatePropagation();
   }
 
   unmuteEl.addEventListener("pointerdown",(e)=>{
     if(!unmuteEl.classList.contains("is-on")) return;
-    swallow(e);
+    stopOnly(e);
   }, true);
 
   unmuteEl.addEventListener("touchstart",(e)=>{
     if(!unmuteEl.classList.contains("is-on")) return;
-    swallow(e);
-  }, {passive:false, capture:true});
+    stopOnly(e);
+  }, {passive:true, capture:true});
 
+  // ✅ анмьют строго в click
   unmuteEl.addEventListener("click", async (e)=>{
     if(!unmuteEl.classList.contains("is-on")) return;
-    swallow(e);
+    e.preventDefault();
+    stopOnly(e);
     await unlockSoundNow();
+  }, true);
+
+  // бонус: если кто-то нажимает Enter/Space
+  unmuteEl.addEventListener("keydown", (e)=>{
+    if(!unmuteEl.classList.contains("is-on")) return;
+    if(e.key==="Enter" || e.key===" "){
+      e.preventDefault();
+      unmuteEl.click();
+    }
   });
 
   document.addEventListener("visibilitychange", ()=>{
