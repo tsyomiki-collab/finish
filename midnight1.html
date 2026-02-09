@@ -6,6 +6,9 @@
       <!-- tap for sound (появится только если звук заблокирован) -->
       <span class="rg-unmute" role="button" aria-label="Tap for sound"></span>
 
+      <!-- ✅ прозрачная кнопка паузы (только для видео) -->
+      <button class="rg-pause" type="button" aria-label="Pause/Play"></button>
+
       <div class="rg-nav">
         <button class="rg-btn rg-prev" type="button">⟨</button>
         <button class="rg-btn rg-next" type="button">⟩</button>
@@ -92,6 +95,36 @@
   mix-blend-mode:difference;
   opacity:.9;
 }
+
+/* ✅ ПРОЗРАЧНАЯ кнопка паузы (без панели управления) */
+.rg-pause{
+  position:absolute;
+  left:50%; top:50%;
+  transform:translate(-50%,-50%);
+  width:64px; height:64px;
+  border:0;
+  padding:0;
+  background:transparent;
+  cursor:pointer;
+  display:none;              /* показываем только когда в центре видео */
+  z-index:6;
+  pointer-events:auto;
+  -webkit-tap-highlight-color:transparent;
+}
+.rg-pause.is-on{display:block}
+.rg-pause::after{
+  content:"⏸";
+  position:absolute;
+  left:50%; top:50%;
+  transform:translate(-50%,-50%);
+  font-size:44px;
+  line-height:1;
+  color:#fff;
+  mix-blend-mode:difference;
+  opacity:.85;
+  user-select:none;
+}
+.rg-pause.is-hiddenIcon::after{ opacity:0; } /* когда играет — иконку прячем */
 </style>
 
 <script>
@@ -146,19 +179,23 @@
   const nav=center.querySelector(".rg-nav");
   const loadingEl=center.querySelector(".rg-loading");
   const unmuteEl=center.querySelector(".rg-unmute");
+  const pauseBtn=center.querySelector(".rg-pause");
 
-  // ✅ кэш нод и “готовности” — как в твоём первом коде
+  // ✅ кэш нод и “готовности”
   const nodeCache=new Map();   // key -> node
   const readyCache=new Map();  // key -> Promise
   const ric = window.requestIdleCallback || ((cb)=>setTimeout(()=>cb({timeRemaining:()=>0}), 120));
 
   function setLoading(on){ loadingEl.classList.toggle("is-on", !!on); }
   function setUnmute(on){ unmuteEl.classList.toggle("is-on", !!on); }
+  function setPauseBtnVisible(on){ pauseBtn.classList.toggle("is-on", !!on); }
+  function setPauseIconHidden(on){ pauseBtn.classList.toggle("is-hiddenIcon", !!on); }
 
   function clearCenterKeepUI(){
     center.innerHTML="";
     center.appendChild(loadingEl);
     center.appendChild(unmuteEl);
+    center.appendChild(pauseBtn);
     center.appendChild(nav);
   }
 
@@ -185,7 +222,6 @@
     const v=document.createElement("video");
     v.className="rg-main";
 
-    // важные атрибуты ДО src
     v.autoplay=true;
     v.loop=true;
     v.controls=false;
@@ -201,7 +237,6 @@
 
     if(el.poster) v.poster=el.poster;
 
-    // стартуем “как будто со звуком”, если блочат — покажем tap
     v.muted=false;
     v.volume=1;
 
@@ -211,7 +246,6 @@
     return v;
   }
 
-  // preload + decode (img) / metadata (video) — чтобы не “белый экран”
   function ensureReady(el, priority){
     const k=keyOf(el);
     if(readyCache.has(k)) return readyCache.get(k);
@@ -234,7 +268,6 @@
         return;
       }
 
-      // video: метаданные + постер
       if(el.poster) ensureReady({type:"img", src: el.poster}, "low");
 
       const v=document.createElement("video");
@@ -297,7 +330,6 @@
       if(await tryPlayWithSound(v)){ soundUnlocked=true; return true; }
     }
 
-    // не дали звук: запускаем muted и показываем “tap for sound”
     forceAutoplayMuted(v);
     setUnmute(true);
     return false;
@@ -318,9 +350,51 @@
     currentVideo=null;
   }
 
+  // ✅ если юзер уходит со страницы — звук пропадает (pause + mute)
+  function silenceNow(){
+    if(!currentVideo) return;
+    try{ currentVideo.pause(); }catch(e){}
+    currentVideo.muted=true;
+    currentVideo.volume=0;
+    setUnmute(false);
+    setPauseIconHidden(false);
+  }
+
+  function wirePauseButton(v){
+    // показываем кнопку только для видео
+    setPauseBtnVisible(true);
+
+    const sync=()=>{
+      if(!currentVideo) return;
+      if(currentVideo.paused) setPauseIconHidden(false); // ⏸ видна
+      else setPauseIconHidden(true);                     // когда играет — прячем
+    };
+
+    v.addEventListener("play", sync);
+    v.addEventListener("pause", sync);
+    sync();
+
+    pauseBtn.onclick=async ()=>{
+      if(!currentVideo) return;
+      if(currentVideo.paused){
+        // если юзер нажал play — пробуем “умно” (со звуком если можно)
+        await startVideoSmart(currentVideo);
+      }else{
+        currentVideo.pause();
+        // на паузе дополнительно убираем звук (чтобы точно “пропал”)
+        currentVideo.muted=true;
+        currentVideo.volume=0;
+        setUnmute(false);
+      }
+      sync();
+    };
+  }
+
   async function mount(el){
     clearCenterKeepUI();
     stopVideo();
+    setPauseBtnVisible(false);
+    pauseBtn.onclick=null;
 
     if(el.type==="img"){
       center.insertBefore(ensureImg(el.src), nav);
@@ -331,13 +405,14 @@
     const v=ensureVideo(el);
     currentVideo=v;
 
-    // как только реально пошло — убираем loading
     const hide=()=>setLoading(false);
     v.addEventListener("playing", hide, {once:true});
     v.addEventListener("loadeddata", hide, {once:true});
     v.addEventListener("error", hide, {once:true});
 
     center.insertBefore(v, nav);
+
+    wirePauseButton(v);
     await startVideoSmart(v);
   }
 
@@ -362,7 +437,6 @@
   prevBtn.onclick=()=>show(index-1);
   nextBtn.onclick=()=>show(index+1);
 
-  // свайп как в твоём коде
   let startX=0;
   gallery.addEventListener("touchstart",e=>{startX=e.touches[0].clientX},{passive:true});
   gallery.addEventListener("touchend",e=>{
@@ -370,10 +444,8 @@
     if(Math.abs(d)>40){ d<0?show(index+1):show(index-1) }
   },{passive:true});
 
-  // тап по “tap for sound”
   unmuteEl.addEventListener("click",(e)=>{ e.preventDefault(); unlockSoundNow(); });
 
-  // первый жест на странице тоже разлочивает попытку звука
   (function armGlobalUnlockOnce(){
     const unlock=()=>{ unlockSoundNow(); cleanup(); };
     const cleanup=()=>{
@@ -387,13 +459,15 @@
   })();
 
   document.addEventListener("visibilitychange", ()=>{
-    if(document.hidden && currentVideo) currentVideo.pause();
-    else if(!document.hidden && currentVideo){
-      startVideoSmart(currentVideo);
-    }
+    if(document.hidden) silenceNow();
+    else if(currentVideo) startVideoSmart(currentVideo);
   });
 
-  // старт
+  // ✅ дополнительные хуки “ухода” (особенно полезно в iframe / iOS)
+  window.addEventListener("pagehide", silenceNow, {capture:true});
+  window.addEventListener("beforeunload", silenceNow, {capture:true});
+  window.addEventListener("blur", ()=>{ if(document.hidden) return; silenceNow(); }, {capture:true});
+
   preloadAround(0);
   show(0);
 })();
