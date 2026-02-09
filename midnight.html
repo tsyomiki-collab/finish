@@ -122,6 +122,7 @@
   display:none !important;
   -webkit-appearance:none !important;
 }
+
 .rg-video{ pointer-events:none; }           /* ✅ само видео нельзя тапнуть */
 .rg-unmute{ pointer-events:auto; }          /* ✅ тап-зона для звука работает */
 
@@ -136,6 +137,7 @@
   margin:0;
   cursor:pointer;
   -webkit-tap-highlight-color:transparent;
+  pointer-events:auto;       /* ✅ ВАЖНО: чтобы кнопка реально ловила тап/клик */
 }
 
 /* loading... */
@@ -362,7 +364,6 @@
       v.setAttribute("disablepictureinpicture", "");
       v.setAttribute("disableRemotePlayback", "");
 
-      // стартуем безопасно
       v.muted = true;
       v.volume = 0;
       v.setAttribute("muted","");
@@ -370,7 +371,6 @@
       const unmute = document.createElement("div");
       unmute.className = "rg-unmute";
 
-      // ✅ невидимая пауза по всей площади видео
       const pauseHit = document.createElement("button");
       pauseHit.type = "button";
       pauseHit.className = "rg-pauseHit";
@@ -487,12 +487,14 @@
   prevBtn.addEventListener("click", ()=>show(index - 1));
   nextBtn.addEventListener("click", ()=>show(index + 1));
 
-  // ✅ убрать звук при выходе/сворачивании страницы
+  // ✅ убрать звук при уходе/сворачивании страницы
   document.addEventListener("visibilitychange", ()=>{
     if(document.hidden) stopAllVideosNow();
   });
   window.addEventListener("pagehide", stopAllVideosNow, {capture:true});
   window.addEventListener("beforeunload", stopAllVideosNow, {capture:true});
+  window.addEventListener("freeze", stopAllVideosNow, {capture:true}); // ✅ iOS/Safari
+  window.addEventListener("blur", stopAllVideosNow, {capture:true});   // ✅ iOS/Safari
 
   preload(thumbSrc(elements[0]), "high");
   preload(thumbSrc(elements[1]), "low");
