@@ -9,7 +9,6 @@
 
     <div id="rg-center" class="rg-centerSlot">
       <span class="rg-loading is-on" aria-hidden="true">loading...</span>
-      <!-- сюда вставится img/video -->
     </div>
 
     <div class="rg-sideSlot">
@@ -27,9 +26,110 @@
 <link rel="preconnect" href="https://res.cloudinary.com" crossorigin>
 
 <style>
-/* ... ВЕСЬ ТВОЙ CSS БЕЗ ИЗМЕНЕНИЙ ... */
+#rg-gallery{
+  position:fixed;
+  inset:0;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  background:#fcfcfc;
+  z-index:9999;
+}
 
-/* иконка play/pause */
+.rg-wrapper{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  max-width:min(2000px, 96vw);
+  padding:0 110px;
+  box-sizing:border-box;
+}
+
+.rg-sideSlot{
+  position:relative;
+  width:360px;
+  height:330px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  overflow:hidden;
+  margin:0 -290px;
+}
+
+.rg-centerSlot{
+  position:relative;
+  width:min(1180px, 70vw);
+  height:735px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  overflow:hidden;
+}
+
+.rg-main{
+  width:100%;
+  height:100%;
+  object-fit:contain;
+  display:block;
+}
+
+.rg-side{
+  width:100%;
+  height:100%;
+  object-fit:contain;
+  opacity:.8;
+  display:block;
+}
+
+.rg-btn{
+  position:fixed;
+  top:50%;
+  transform:translateY(-50%);
+  width:120px;
+  height:120px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-size:3rem;
+  border:0;
+  background:transparent;
+  color:#666;
+  cursor:pointer;
+}
+
+.rg-prev{ left:80px; }
+.rg-next{ right:80px; }
+
+@media (max-width:820px){
+  .rg-sideSlot{ display:none; }
+  .rg-centerSlot{ width:92vw; }
+}
+
+.rg-loading{
+  position:absolute;
+  left:50%;
+  top:50%;
+  transform:translate(-50%,-50%);
+  font-family:"SegoeUI","Segoe UI",system-ui;
+  font-weight:300;
+  font-size:13px;
+  letter-spacing:.01em;
+  line-height:16px;
+  color:#fff;
+  mix-blend-mode:difference;
+  opacity:.9;
+  pointer-events:none;
+  user-select:none;
+  display:none;
+}
+.rg-loading.is-on{ display:block; }
+
+.rg-side.is-loading,
+.rg-main.is-loading{ opacity:0; }
+
+#rg-gallery .rg-loading{ z-index:999; }
+
+/* иконка паузы */
 .rg-pauseIcon{
   position:absolute;
   right:18px;
@@ -48,7 +148,6 @@
   pointer-events:none;
   transition:opacity .2s ease;
 }
-
 .rg-centerSlot:hover .rg-pauseIcon{
   opacity:1;
   pointer-events:auto;
@@ -57,13 +156,58 @@
 
 <script>
 (function(){
-  /* ... ВЕСЬ ТВОЙ JS БЕЗ ИЗМЕНЕНИЙ ДО showCenter ... */
+  const gallery=document.getElementById("rg-gallery");
+  if(!gallery||gallery.dataset.rgInit==="1")return;
+  gallery.dataset.rgInit="1";
+
+  const elements=[
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/Grimaldi/main/1.jpg"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/Grimaldi/main/2.jpg"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/Grimaldi/main/3.jpg"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/Grimaldi/main/4.jpg"},
+    {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/Grimaldi/main/5.jpg"},
+    {
+      type:'video',
+      src:"https://res.cloudinary.com/dmtnse4sz/video/upload/v1769860171/6_acmyrk.mov",
+      poster:"https://raw.githubusercontent.com/tsyomiki-collab/finish/main/Screenshot%202026-02-05%20at%2019.38.04.png"
+    },
+    {
+      type:'video',
+      src:"https://res.cloudinary.com/dmtnse4sz/video/upload/v1769860155/7_zb4vkq.mov",
+      poster:"https://raw.githubusercontent.com/tsyomiki-collab/finish/main/Screenshot%202026-02-05%20at%2019.39.59.png"
+    }
+  ];
+
+  let index=0, token=0;
+  const left=document.getElementById("rg-left");
+  const right=document.getElementById("rg-right");
+  const center=document.getElementById("rg-center");
+  const prevBtn=gallery.querySelector(".rg-prev");
+  const nextBtn=gallery.querySelector(".rg-next");
+
+  let activeVideo=null;
+
+  function setLoading(slotEl, on){
+    const l = slotEl.querySelector(".rg-loading");
+    if(l) l.classList.toggle("is-on", !!on);
+  }
+
+  function stopVideo(){
+    if(!activeVideo) return;
+    try{ activeVideo.muted=true; }catch(e){}
+    try{ activeVideo.pause(); }catch(e){}
+    activeVideo=null;
+  }
+
+  window.addEventListener("pagehide", stopVideo, {capture:true});
+  window.addEventListener("beforeunload", stopVideo, {capture:true});
+  document.addEventListener("visibilitychange", ()=>{
+    if(document.hidden) stopVideo();
+  }, {capture:true});
 
   function showCenter(el){
     stopVideo();
-
-    center.innerHTML = '<span class="rg-loading is-on" aria-hidden="true">loading...</span>';
-    center.appendChild(soundHint);
+    center.innerHTML = '<span class="rg-loading is-on">loading...</span>';
 
     if(el.type==="video"){
       const v=document.createElement("video");
@@ -72,58 +216,69 @@
       if(el.poster) v.poster=el.poster;
 
       v.autoplay=true;
-      v.muted=false;
-      v.volume=1;
       v.loop=true;
       v.playsInline=true;
+      v.muted=false;
       v.controls=false;
       v.preload="auto";
 
-      v.setAttribute("playsinline","");
-      v.setAttribute("webkit-playsinline","");
-      v.setAttribute("controlslist","nodownload noplaybackrate noremoteplayback");
-      v.setAttribute("disablepictureinpicture","");
-
       v.style.pointerEvents="none";
-
-      center.onmouseenter=()=>{ if(activeVideo) activeVideo.style.pointerEvents="auto"; };
-      center.onmouseleave=()=>{ if(activeVideo) activeVideo.style.pointerEvents="none"; };
+      center.onmouseenter=()=> v.style.pointerEvents="auto";
+      center.onmouseleave=()=> v.style.pointerEvents="none";
 
       const icon=document.createElement("div");
       icon.className="rg-pauseIcon";
       icon.textContent="⏸";
 
       icon.onclick=()=>{
-        if(v.paused){
-          v.play();
-          icon.textContent="⏸";
-        }else{
-          v.pause();
-          icon.textContent="▶";
-        }
+        if(v.paused){ v.play(); icon.textContent="⏸"; }
+        else{ v.pause(); icon.textContent="▶"; }
       };
 
       v.addEventListener("play", ()=> icon.textContent="⏸");
       v.addEventListener("pause", ()=> icon.textContent="▶");
 
-      const ready=()=>{
-        v.classList.remove("is-loading");
-        setLoading(center,false);
-      };
-
-      v.addEventListener("loadeddata", ready, {once:true});
-      v.addEventListener("playing", ready, {once:true});
+      v.onplaying=()=>{ v.classList.remove("is-loading"); setLoading(center,false); };
 
       center.appendChild(v);
       center.appendChild(icon);
       activeVideo=v;
 
-      tryPlay();
+      v.play().catch(()=>{ v.muted=true; v.play().catch(()=>{}); });
       return;
     }
 
-    /* img без изменений */
+    const img=document.createElement("img");
+    img.className="rg-main is-loading";
+    img.onload=()=>{ img.classList.remove("is-loading"); setLoading(center,false); };
+    img.src=el.src;
+    center.appendChild(img);
   }
 
+  function setSide(imgEl, src){
+    const slot=imgEl.parentElement;
+    setLoading(slot,true);
+    imgEl.classList.add("is-loading");
+    imgEl.onload=()=>{ imgEl.classList.remove("is-loading"); setLoading(slot,false); };
+    imgEl.src=src;
+  }
+
+  function show(i){
+    if(i<0)i=elements.length-1;
+    if(i>=elements.length)i=0;
+    index=i;
+
+    const p=(i-1+elements.length)%elements.length;
+    const n=(i+1)%elements.length;
+
+    setSide(left, elements[p].type==="video" ? elements[p].poster : elements[p].src);
+    setSide(right, elements[n].type==="video" ? elements[n].poster : elements[n].src);
+    showCenter(elements[i]);
+  }
+
+  prevBtn.onclick=()=>show(index-1);
+  nextBtn.onclick=()=>show(index+1);
+
+  show(0);
 })();
 </script>
