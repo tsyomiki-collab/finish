@@ -122,8 +122,21 @@
   display:none !important;
   -webkit-appearance:none !important;
 }
-.rg-video{ pointer-events:none; }           /* ✅ чтобы нельзя было тапнуть и “поставить на паузу” */
-.rg-unmute{ pointer-events:auto; }          /* ✅ но тап-зона для звука должна работать */
+.rg-video{ pointer-events:none; }           /* ✅ само видео нельзя тапнуть */
+.rg-unmute{ pointer-events:auto; }          /* ✅ тап-зона для звука работает */
+
+/* ✅ невидимая пауза по всей площади видео */
+.rg-pauseHit{
+  position:absolute;
+  inset:0;
+  z-index:900;               /* ниже tap-for-sound (1001), но выше видео */
+  background:transparent;
+  border:0;
+  padding:0;
+  margin:0;
+  cursor:pointer;
+  -webkit-tap-highlight-color:transparent;
+}
 
 /* loading... */
 .rg-loading{
@@ -251,6 +264,7 @@
   if(!left || !right || !center || !prevBtn || !nextBtn) return;
 
   const preloadCache = new Map();
+  const videoCache = new Set();
   let activeVideo = null;
 
   function thumbSrc(item){
@@ -289,11 +303,24 @@
     imgEl.classList.toggle("rg-wide", !!(item && item.wide));
   }
 
+  function hardMuteAndStop(v){
+    if(!v) return;
+    try{ v.muted = true; v.volume = 0; v.setAttribute("muted",""); }catch(e){}
+    try{ v.pause(); }catch(e){}
+  }
+
   function stopVideo(){
     if(!activeVideo) return;
-    try{ activeVideo.pause(); }catch(e){}
+    hardMuteAndStop(activeVideo);
     try{ activeVideo.removeAttribute("src"); activeVideo.load?.(); }catch(e){}
     activeVideo = null;
+  }
+
+  function stopAllVideosNow(){
+    if(activeVideo) hardMuteAndStop(activeVideo);
+    for(const v of videoCache){
+      hardMuteAndStop(v);
+    }
   }
 
   function setSide(imgEl, item){
@@ -327,20 +354,45 @@
       v.playsInline = true;
       v.preload = "auto";
 
-      v.controls = false;                          /* ✅ */
-      v.setAttribute("controls", "false");         /* ✅ страховка */
+      v.controls = false;
+      v.setAttribute("controls", "false");
       v.setAttribute("playsinline", "");
       v.setAttribute("webkit-playsinline", "");
       v.setAttribute("controlslist", "nodownload noplaybackrate noremoteplayback");
       v.setAttribute("disablepictureinpicture", "");
-      v.setAttribute("disableRemotePlayback", ""); /* ✅ ещё страховка */
+      v.setAttribute("disableRemotePlayback", "");
+
+      // стартуем безопасно
+      v.muted = true;
+      v.volume = 0;
+      v.setAttribute("muted","");
 
       const unmute = document.createElement("div");
-      unmute.className = "rg-unmute";              /* ✅ как во втором коде */
+      unmute.className = "rg-unmute";
+
+      // ✅ невидимая пауза по всей площади видео
+      const pauseHit = document.createElement("button");
+      pauseHit.type = "button";
+      pauseHit.className = "rg-pauseHit";
+      pauseHit.setAttribute("aria-label","Toggle pause");
+
+      pauseHit.addEventListener("click", (e)=>{
+        e.preventDefault();
+        if(!activeVideo) return;
+        if(activeVideo.paused){
+          const p = activeVideo.play();
+          if(p && typeof p.catch==="function") p.catch(()=>{});
+        }else{
+          try{ activeVideo.pause(); }catch(err){}
+        }
+      });
 
       center.appendChild(v);
+      center.appendChild(pauseHit);
       center.appendChild(unmute);
+
       activeVideo = v;
+      videoCache.add(v);
 
       const hideLoader = ()=>{
         v.classList.remove("is-loading");
@@ -354,11 +406,13 @@
       const trySound = async ()=>{
         try{
           v.muted = false;
+          v.volume = 1;
           await v.play();
           unmute.classList.remove("is-on");
         }catch(err){
           try{
             v.muted = true;
+            v.volume = 0;
             await v.play();
           }catch(e){}
           unmute.classList.add("is-on");
@@ -369,6 +423,7 @@
         unmute.classList.remove("is-on");
         try{
           v.muted = false;
+          v.volume = 1;
           await v.play();
         }catch(e){
           unmute.classList.add("is-on");
@@ -431,6 +486,13 @@
 
   prevBtn.addEventListener("click", ()=>show(index - 1));
   nextBtn.addEventListener("click", ()=>show(index + 1));
+
+  // ✅ убрать звук при выходе/сворачивании страницы
+  document.addEventListener("visibilitychange", ()=>{
+    if(document.hidden) stopAllVideosNow();
+  });
+  window.addEventListener("pagehide", stopAllVideosNow, {capture:true});
+  window.addEventListener("beforeunload", stopAllVideosNow, {capture:true});
 
   preload(thumbSrc(elements[0]), "high");
   preload(thumbSrc(elements[1]), "low");
