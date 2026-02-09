@@ -92,7 +92,6 @@
 }
 
 .rg-side{ opacity:.8; }
-
 .rg-side.rg-wide{
   transform:scale(.68);
   transform-origin:center center;
@@ -106,8 +105,10 @@
   object-fit:contain;
   background:transparent;
 
-  /* ✅ клики идут на оверлеи */
-  pointer-events:none;
+  /* ✅ теперь можно тапнуть (пауза/плей), но без панели */
+  pointer-events:auto;
+  -webkit-tap-highlight-color:transparent;
+  touch-action:manipulation;
 }
 
 /* loading... */
@@ -116,27 +117,22 @@
   left:50%;
   top:50%;
   transform:translate(-50%,-50%);
-
   font-family:"SegoeUI","Segoe UI",-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif;
   font-weight:300;
   font-size:14px;
   letter-spacing:.01em;
   line-height:16px;
-
   color:#fff;
   mix-blend-mode:difference;
   opacity:.9;
-
   pointer-events:none;
   user-select:none;
   display:none;
 }
 .rg-loading.is-on{ display:block; }
-
-/* лоадер всегда поверх */
 #rg-gallery .rg-loading{ z-index:999; }
 
-/* до старта JS */
+/* ✅ ДО старта JS показываем loading всегда (убирает белый экран со стрелками) */
 #rg-gallery:not([data-rg-init="1"]) .rg-loading{
   display:block !important;
 }
@@ -150,7 +146,7 @@
 .rg-main.is-loading,
 .rg-video.is-loading{ opacity:0; }
 
-/* tap for sound (пилюля) — НЕ УБИРАЕМ */
+/* tap for sound (пилюля) */
 .rg-unmute{
   position:absolute;
   inset:0;
@@ -161,7 +157,7 @@
   user-select:none;
   -webkit-tap-highlight-color:transparent;
   z-index:2;
-  pointer-events:auto;
+  pointer-events:auto; /* кликаем по оверлею */
 }
 .rg-unmute.is-on{ display:flex; }
 
@@ -172,28 +168,13 @@
   font-size:15px;
   letter-spacing:.01em;
   line-height:18px;
-
   border:1px solid rgba(0,0,0,.12);
   background:rgba(255,255,255,.92);
   border-radius:999px;
   color:#111;
 }
 
-/* ✅ невидимая пауза/плей по клику (визуально ничего) */
-.rg-hit{
-  position:absolute;
-  inset:0;
-  border:0;
-  padding:0;
-  margin:0;
-  background:transparent;
-  opacity:0;
-  cursor:pointer;
-  z-index:3;            /* выше видео (оно pointer-events:none) и выше unmute? ниже лоадинга */
-  pointer-events:auto;  /* важно */
-  -webkit-tap-highlight-color:transparent;
-}
-
+/* кнопки */
 .rg-btn{
   position:fixed;
   top:50%;
@@ -260,37 +241,25 @@
 
   const cache = new Map();
   let activeVideo = null;
-  let stopWatch = null;
+  let activeUnmute = null;
+  let videoHideTimer = 0;
 
   function thumbSrc(item){
     return item.type === "video" ? (item.poster || "") : (item.src || "");
   }
 
-  /* ✅ ускорение видео: отдаём более “лёгкий” дериватив через Cloudinary (mp4/h264 + q_auto) */
-  function cldFastVideo(url){
-    if(!url || typeof url !== "string") return url;
-    if(url.indexOf("/video/upload/") === -1) return url;
-    const transforms = "f_mp4,vc_h264,ac_aac,q_auto";
-    return url.replace("/video/upload/", `/video/upload/${transforms}/`);
-  }
-
-  // ✅ апгрейдим elements сразу (только видео src)
-  const fastElements = elements.map(it=>{
-    if(it.type !== "video") return it;
-    return { ...it, src: cldFastVideo(it.src) };
-  });
-
-  /* preload постера + первых картинок */
+  /* ✅ ускоряем старт: preload постера/картинок + пробуем preload самого видео */
   (function addPreloadLinks(){
     try{
       const head = document.head || document.getElementsByTagName("head")[0];
-      const first = [
-        thumbSrc(fastElements[0]),
-        thumbSrc(fastElements[1]),
-        thumbSrc(fastElements[2])
+
+      const imgList = [
+        thumbSrc(elements[0]),
+        thumbSrc(elements[1]),
+        thumbSrc(elements[2])
       ].filter(Boolean);
 
-      first.forEach((href, i)=>{
+      imgList.forEach((href, i)=>{
         if(document.querySelector(`link[rel="preload"][as="image"][href="${href}"]`)) return;
         const link = document.createElement("link");
         link.rel = "preload";
@@ -299,6 +268,17 @@
         try{ link.fetchPriority = (i === 0 ? "high" : "low"); }catch(e){}
         head.appendChild(link);
       });
+
+      const v0 = elements[0] && elements[0].type === "video" ? elements[0].src : "";
+      if(v0 && !document.querySelector(`link[rel="preload"][as="video"][href="${v0}"]`)){
+        const lv = document.createElement("link");
+        lv.rel = "preload";
+        lv.as  = "video";
+        lv.href = v0;
+        lv.type = "video/mp4";
+        lv.crossOrigin = "anonymous";
+        head.appendChild(lv);
+      }
     }catch(e){}
   })();
 
@@ -333,28 +313,24 @@
     right.style.visibility = h ? "hidden" : "visible";
   }
 
-  function stopWatching(){
-    if(stopWatch){ try{ stopWatch(); }catch(e){} }
-    stopWatch = null;
+  function hardSilenceVideo(v){
+    if(!v) return;
+    try{ v.muted = true; v.volume = 0; }catch(e){}
   }
 
-  function stopVideoHard(){
-    stopWatching();
+  function stopVideo(){
+    if(videoHideTimer){ clearTimeout(videoHideTimer); videoHideTimer = 0; }
     if(!activeVideo) return;
-    try{ activeVideo.pause(); }catch(e){}
-    try{ activeVideo.muted = true; }catch(e){}
-    try{ activeVideo.removeAttribute("src"); activeVideo.load?.(); }catch(e){}
-    activeVideo = null;
-  }
 
-  // ✅ звук исчезает при уходе/скрытии страницы
-  const stopOnLeave = ()=>{ stopVideoHard(); };
-  window.addEventListener("pagehide", stopOnLeave, {capture:true});
-  window.addEventListener("beforeunload", stopOnLeave, {capture:true});
-  document.addEventListener("visibilitychange", ()=>{
-    if(document.hidden) stopOnLeave();
-  }, {capture:true});
-  window.addEventListener("blur", stopOnLeave, {capture:true});
+    try{ hardSilenceVideo(activeVideo); }catch(e){}
+    try{ activeVideo.pause(); }catch(e){}
+
+    // "обрываем" загрузку/звук при уходе со слайда
+    try{ activeVideo.removeAttribute("src"); activeVideo.load?.(); }catch(e){}
+
+    activeVideo = null;
+    activeUnmute = null;
+  }
 
   function setSide(imgEl, item){
     const slot = imgEl.parentElement;
@@ -372,83 +348,10 @@
     markSide(imgEl, item);
   }
 
-  async function tryPlayWithSound(v){
-    v.muted = false;
-    v.volume = 1;
-    try{ await v.play(); return true; }catch(e){}
-    return false;
-  }
-
-  async function startVideoSmart(v){
-    // 1) пробуем autoplay со звуком
-    if(await tryPlayWithSound(v)) return true;
-
-    // 2) если заблокировано — запускаем muted (чтобы шло)
-    v.muted = true;
-    v.volume = 0;
-    try{ await v.play(); }catch(e){}
-    return false;
-  }
-
-  // ✅ держим лоадинг, пока видео реально НЕ начнёт идти хотя бы пару секунд
-  function watchUntilPlaysFor(v, seconds){
-    let killed=false;
-    let startTime=null;
-    let lastT=v.currentTime||0;
-    let timer=null;
-
-    const finish = ()=>{
-      if(killed) return;
-      killed=true;
-      if(timer) clearInterval(timer);
-      setLoading(center, false);
-      v.removeEventListener("waiting", onWait);
-      v.removeEventListener("stalled", onWait);
-      v.removeEventListener("seeking", onWait);
-      v.removeEventListener("error", onErr);
-    };
-
-    const onWait = ()=>{ if(!killed) setLoading(center, true); };
-    const onErr  = ()=>{ if(!killed) setLoading(center, false); };
-
-    v.addEventListener("waiting", onWait);
-    v.addEventListener("stalled", onWait);
-    v.addEventListener("seeking", onWait);
-    v.addEventListener("error", onErr, {once:true});
-
-    setLoading(center, true);
-
-    timer = setInterval(()=>{
-      if(killed) return;
-
-      const ct = v.currentTime || 0;
-
-      // как только таймкод реально двигается — фиксируем точку старта
-      if(ct > lastT + 0.02){
-        if(startTime === null) startTime = ct;
-        // если прошло >= seconds — убираем лоадер
-        if(ct - startTime >= (seconds || 0)){
-          finish();
-          return;
-        }
-      }else{
-        // если не двигается — это постер/буфер -> лоадер держим
-        setLoading(center, true);
-      }
-
-      // если пытается играть, но readyState низкий — тоже держим
-      if(!v.paused && v.readyState < 3) setLoading(center, true);
-
-      lastT = ct;
-    }, 250);
-
-    return finish;
-  }
-
   function showCenter(item){
-    stopVideoHard();
+    stopVideo();
 
-    // ✅ не меняем визуал: оставляем loader как раньше
+    // ✅ loader ON сразу
     center.innerHTML = '<span class="rg-loading is-on" aria-hidden="true">loading...</span>';
 
     if(item.type === "video"){
@@ -457,38 +360,67 @@
       v.src = item.src;
       if(item.poster) v.poster = item.poster;
 
-      v.autoplay = true;          // ✅ autoplay не убираем
+      v.autoplay = true;
       v.loop = true;
       v.playsInline = true;
-      v.preload = "auto";
-      v.controls = false;
 
+      // ✅ чаще быстрее стартует, чем auto (не пытается тянуть слишком много сразу)
+      v.preload = "metadata";
+
+      v.controls = false;
       v.setAttribute("playsinline", "");
       v.setAttribute("webkit-playsinline", "");
       v.setAttribute("controlslist", "nodownload noplaybackrate noremoteplayback");
       v.setAttribute("disablepictureinpicture", "");
 
+      // важно: без crossOrigin может не использовать preload-link в некоторых случаях
+      try{ v.crossOrigin = "anonymous"; }catch(e){}
+
       const unmute = document.createElement("div");
       unmute.className = "rg-unmute";
-      unmute.innerHTML = "<span>tap for sound</span>"; // ✅ тап НЕ УБИРАЕМ
-
-      // ✅ невидимая пауза (поверх всего, но лоадер всё равно выше по z-index)
-      const hit = document.createElement("button");
-      hit.type = "button";
-      hit.className = "rg-hit";
-      hit.setAttribute("aria-label","Pause / Play");
+      unmute.innerHTML = "<span>tap for sound</span>";
 
       center.appendChild(v);
       center.appendChild(unmute);
-      center.appendChild(hit);
 
       activeVideo = v;
+      activeUnmute = unmute;
 
-      // ✅ лоадер скрываем ТОЛЬКО когда видео реально поиграло 2 секунды
-      stopWatching();
-      stopWatch = watchUntilPlaysFor(v, 2);
+      const hideLoaderWithDelay = ()=>{
+        // ✅ держим loading до старта + ещё 2 сек
+        if(videoHideTimer) clearTimeout(videoHideTimer);
+        videoHideTimer = setTimeout(()=>{
+          // если это всё ещё активное видео
+          if(activeVideo === v){
+            v.classList.remove("is-loading");
+            setLoading(center, false);
+          }
+        }, 2000);
+      };
 
-      // autoplay best effort со звуком, иначе показываем тап
+      // как только реально начало играть — запускаем таймер скрытия
+      v.addEventListener("playing", hideLoaderWithDelay, {once:true});
+      // страховки на случай странных состояний
+      v.addEventListener("canplay", ()=>{ /* не прячем сразу */ }, {once:true});
+      v.addEventListener("loadeddata", ()=>{ /* не прячем сразу */ }, {once:true});
+      v.onerror = ()=>{ v.classList.remove("is-loading"); setLoading(center,false); };
+
+      // ✅ невидимая пауза по тапу (без иконок/панели)
+      v.addEventListener("click", async (e)=>{
+        // если поверх висит tap for sound — пусть он ловит клики, а видео не трогаем
+        if(activeUnmute && activeUnmute.classList.contains("is-on")) return;
+
+        try{
+          if(v.paused){
+            await v.play();
+          }else{
+            v.pause();
+          }
+        }catch(err){}
+      });
+
+      // ✅ autoplay со звуком (best effort): сначала пытаемся со звуком,
+      // если блок — запускаем muted и показываем "tap for sound"
       const trySound = async ()=>{
         try{
           v.muted = false;
@@ -498,6 +430,7 @@
         }catch(err){
           try{
             v.muted = true;
+            v.volume = 0;
             await v.play();
           }catch(e){}
           unmute.classList.add("is-on");
@@ -505,7 +438,6 @@
       };
 
       unmute.addEventListener("click", async ()=>{
-        // клик по “tap for sound”
         unmute.classList.remove("is-on");
         try{
           v.muted = false;
@@ -515,19 +447,6 @@
           unmute.classList.add("is-on");
         }
       });
-
-      // ✅ невидимая пауза/плей
-      hit.onclick = async ()=>{
-        if(!activeVideo) return;
-        if(activeVideo.paused){
-          // при возобновлении — снова держим лоадинг до 2 сек реального хода
-          stopWatching();
-          stopWatch = watchUntilPlaysFor(activeVideo, 2);
-          try{ await activeVideo.play(); }catch(e){}
-        }else{
-          try{ activeVideo.pause(); }catch(e){}
-        }
-      };
 
       trySound();
       return;
@@ -549,35 +468,38 @@
   async function show(i){
     const t = ++token;
 
-    if(i < 0) i = fastElements.length - 1;
-    if(i >= fastElements.length) i = 0;
+    if(i < 0) i = elements.length - 1;
+    if(i >= elements.length) i = 0;
     index = i;
 
-    const p = (i - 1 + fastElements.length) % fastElements.length;
-    const n = (i + 1) % fastElements.length;
+    const p = (i - 1 + elements.length) % elements.length;
+    const n = (i + 1) % elements.length;
 
+    // ✅ loading сразу
     setLoading(left.parentElement, true);
     setLoading(right.parentElement, true);
     setLoading(center, true);
 
     await Promise.all([
-      preloadImg(thumbSrc(fastElements[i]), "high"),
-      preloadImg(thumbSrc(fastElements[p]), "low"),
-      preloadImg(thumbSrc(fastElements[n]), "low")
+      preloadImg(thumbSrc(elements[i]), "high"),
+      preloadImg(thumbSrc(elements[p]), "low"),
+      preloadImg(thumbSrc(elements[n]), "low")
     ]);
     if(t !== token) return;
 
-    setSide(left,  fastElements[p]);
-    setSide(right, fastElements[n]);
-    showCenter(fastElements[i]);
+    setSide(left,  elements[p]);
+    setSide(right, elements[n]);
+    showCenter(elements[i]);
 
-    setSidesHidden(!!fastElements[i].wide);
+    // wide:true — скрываем боковые
+    setSidesHidden(!!elements[i].wide);
 
-    const p2 = (p - 1 + fastElements.length) % fastElements.length;
-    const n2 = (n + 1) % fastElements.length;
+    // фон
+    const p2 = (p - 1 + elements.length) % elements.length;
+    const n2 = (n + 1) % elements.length;
     const bg = ()=>{
-      preloadImg(thumbSrc(fastElements[p2]), "low");
-      preloadImg(thumbSrc(fastElements[n2]), "low");
+      preloadImg(thumbSrc(elements[p2]), "low");
+      preloadImg(thumbSrc(elements[n2]), "low");
     };
     if("requestIdleCallback" in window) requestIdleCallback(bg, {timeout:600});
     else setTimeout(bg, 0);
@@ -586,10 +508,26 @@
   prevBtn.onclick = ()=>show(index - 1);
   nextBtn.onclick = ()=>show(index + 1);
 
-  preloadImg(thumbSrc(fastElements[0]), "high");
-  preloadImg(thumbSrc(fastElements[1]), "low");
-  preloadImg(thumbSrc(fastElements[2]), "low");
+  // быстрый старт
+  preloadImg(thumbSrc(elements[0]), "high");
+  preloadImg(thumbSrc(elements[1]), "low");
+  preloadImg(thumbSrc(elements[2]), "low");
 
   show(0);
+
+  // ✅ убираем звук/останавливаем при уходе со страницы/вкладка скрыта (и в iframe тоже)
+  function silenceOnExit(){
+    if(activeVideo){
+      try{ hardSilenceVideo(activeVideo); }catch(e){}
+      try{ activeVideo.pause(); }catch(e){}
+      // если хочешь именно "звук исчезает" но видео продолжает — убери pause() строку выше
+    }
+  }
+  document.addEventListener("visibilitychange", ()=>{
+    if(document.hidden) silenceOnExit();
+  }, {passive:true});
+
+  window.addEventListener("pagehide", silenceOnExit, {passive:true});
+  window.addEventListener("blur", silenceOnExit, {passive:true});
 })();
 </script>
