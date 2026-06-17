@@ -92,9 +92,13 @@
     {type:'img',src:"https://raw.githubusercontent.com/tsyomiki-collab/devil2/main/DevilAngel_ElenasKasnatschejew_TianaLenz_Editorial_10.webp"}
   ];
 
-  const elements = elementsRaw.map(el=>{
-    if(el.type==="img") return {...el, src: cldFetch(el.src, W_IMG)};
-    if(el.type==="video") return {...el, poster: el.poster ? cldFetch(el.poster, W_POSTER) : ""};
+    const fast = elements.map(el=>{
+    if(el.type === "img") return el;
+    if(el.type === "video") return {
+      ...el,
+      src: cldFastVideo(el.src),
+      poster: el.poster ? el.poster : ""
+    };
     return el;
   });
 
