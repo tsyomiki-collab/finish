@@ -123,11 +123,11 @@
   }
 
   const fast = elements.map(el=>{
-    if(el.type === "img") return { ...el, src: cldFetchImg(el.src, W_IMG) };
+    if(el.type === "img") return el;
     if(el.type === "video") return {
       ...el,
       src: cldFastVideo(el.src),
-      poster: el.poster ? cldFetchImg(el.poster, W_POSTER) : ""
+      poster: el.poster ? el.poster : ""
     };
     return el;
   });
