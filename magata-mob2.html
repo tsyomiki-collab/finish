@@ -1,0 +1,337 @@
+<div id="rg-gallery">
+  <div id="rg-stage">
+    <div id="rg-center">
+      <span class="rg-loading is-on" aria-hidden="true">loading...</span>
+
+      <span class="rg-unmute" role="button" aria-label="Tap for sound"></span>
+
+      <div class="rg-nav">
+        <button class="rg-btn rg-prev" type="button">⟨</button>
+        <button class="rg-btn rg-next" type="button">⟩</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<link rel="dns-prefetch" href="//cdn.jsdelivr.net">
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+<link rel="dns-prefetch" href="//c.s-microsoft.com">
+<link rel="preconnect" href="https://c.s-microsoft.com" crossorigin>
+
+<style>
+@font-face{
+  font-family:"SegoeUI";
+  src:
+    local("Segoe UI Light"),
+    url("https://c.s-microsoft.com/static/fonts/segoe-ui/west-european/light/latest.woff2") format("woff2"),
+    url("https://c.s-microsoft.com/static/fonts/segoe-ui/west-european/light/latest.woff") format("woff"),
+    url("https://c.s-microsoft.com/static/fonts/segoe-ui/west-european/light/latest.ttf") format("truetype");
+  font-weight:300;
+  font-style:normal;
+  font-display:swap;
+}
+
+#rg-gallery{position:fixed;inset:0;background:#fcfcfc;z-index:9999;overflow:hidden}
+#rg-stage{position:absolute;inset:0;top:-60px;display:flex;align-items:center;justify-content:center;pointer-events:none}
+
+/* ✅ фото/видео БОЛЬШЕ (nav и отступы те же) */
+#rg-center{
+  width:86vw;max-width:520px;
+  height:62vh;max-height:560px;
+  display:flex;align-items:center;justify-content:center;
+  position:relative;pointer-events:none
+}
+
+.rg-main{max-width:100%;max-height:100%;object-fit:contain;display:block;pointer-events:auto}
+
+.rg-nav{position:absolute;left:50%;bottom:-65px;transform:translateX(-50%);display:flex;gap:25px;pointer-events:auto}
+.rg-btn{font-size:1.6rem;background:none;border:none;color:#666;cursor:pointer;padding:4px 8px;user-select:none;-webkit-tap-highlight-color:transparent}
+
+/* ✅ LOADING: 10px + SegoeUI 300 + mix-blend */
+.rg-loading{
+  position:absolute;left:50%;top:50%;
+  transform:translate(-50%,-50%);
+  font-family:"SegoeUI","Segoe UI",-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif;
+  font-weight:300;
+  font-size:10px;
+  line-height:16px;
+  letter-spacing:0.01em;
+  white-space:nowrap;
+  color:#fff;
+  mix-blend-mode:difference;
+  opacity:.9;
+  pointer-events:none;
+  user-select:none;
+  display:none;
+}
+.rg-loading.is-on{display:block}
+
+/* ✅ TAP FOR SOUND: 10px, тот же шрифт */
+.rg-unmute{
+  position:absolute;left:50%;top:50%;
+  transform:translate(-50%,-50%);
+  display:none;
+  z-index:5;
+  pointer-events:auto;
+  cursor:pointer;
+  user-select:none;
+  -webkit-tap-highlight-color:transparent;
+}
+.rg-unmute.is-on{display:block}
+.rg-unmute::after{
+  content:"tap for sound";
+  font-family:"SegoeUI","Segoe UI",-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif;
+  font-weight:300;
+  font-size:10px;
+  line-height:16px;
+  letter-spacing:0.01em;
+  white-space:nowrap;
+  color:#fff;
+  mix-blend-mode:difference;
+  opacity:.9;
+}
+</style>
+
+<script>
+(function(){
+  const gallery=document.getElementById("rg-gallery");
+  if(!gallery||gallery.dataset.rgInit==="1")return;
+  gallery.dataset.rgInit="1";
+
+  // ---------- ✅ ЭЛЕМЕНТЫ ПРЯМЫМИ ССЫЛКАМИ И ТВОЁ ВИДЕО ИЗ GUMLET ----------
+  const elements=[
+    {type:'img', src:"https://cdn.jsdelivr.net/gh/tsyomiki-collab/main@main/1.jpg"},
+    {type:'img', src:"https://cdn.jsdelivr.net/gh/tsyomiki-collab/main@main/2.jpg"},
+    {
+      type: 'video',
+      src: "https://video.gumlet.io/6a320ee529923fe6a20306e8/6a3264b3b02ffb1d838e569f/main.mp4",
+      poster: "https://cdn.jsdelivr.net/gh/tsyomiki-collab/main@main/Screenshot%202026-01-31%20at%202016.01.13.png"
+    },
+    {type:'img', src:"https://cdn.jsdelivr.net/gh/tsyomiki-collab/main@main/4.jpg"},
+    {type:'img', src:"https://cdn.jsdelivr.net/gh/tsyomiki-collab/main@main/5.jpg"},
+    {type:'img', src:"https://cdn.jsdelivr.net/gh/tsyomiki-collab/main@main/6.jpg"},
+    {type:'img', src:"https://cdn.jsdelivr.net/gh/tsyomiki-collab/main@main/7.jpg"},
+    {type:'img', src:"https://cdn.jsdelivr.net/gh/tsyomiki-collab/main@main/8.jpg"},
+    {type:'img', src:"https://cdn.jsdelivr.net/gh/tsyomiki-collab/main@main/9.jpg"}
+  ];
+
+  const center=document.getElementById("rg-center");
+  const prevBtn=gallery.querySelector(".rg-prev");
+  const nextBtn=gallery.querySelector(".rg-next");
+  const loadingEl=center.querySelector(".rg-loading");
+  const unmuteEl=center.querySelector(".rg-unmute");
+
+  let index=0, token=0, currentVideo=null;
+
+  const nodeCache = new Map();      // key -> <img> / <video>
+  const readyCache = new Map();     // key -> Promise (декод/метаданные)
+  const ric = window.requestIdleCallback || ((cb)=>setTimeout(()=>cb({timeRemaining:()=>0}), 120));
+
+  function keyOf(el){ return el.type==="video" ? ("v:"+el.src) : ("i:"+el.src); }
+
+  function setLoading(on){ loadingEl.classList.toggle("is-on", !!on); }
+  function setUnmute(on){ unmuteEl.classList.toggle("is-on", !!on); }
+
+  function clearCenterKeepUI(){
+    const nav=center.querySelector(".rg-nav");
+    center.innerHTML="";
+    center.appendChild(loadingEl);
+    center.appendChild(unmuteEl);
+    if(nav) center.appendChild(nav);
+  }
+
+  function makeImg(src){
+    const img = new Image();
+    img.className = "rg-main";
+    img.decoding = "async";
+    img.loading = "eager";
+    img.crossOrigin = "anonymous";
+    img.src = src;
+    return img;
+  }
+    
+  function makeVideo(el){
+    const v = document.createElement("video");
+    v.className="rg-main";
+
+    v.autoplay=true;
+    v.loop=true;
+    v.controls=false;
+
+    v.playsInline=true;
+    v.setAttribute("playsinline","");
+    v.setAttribute("webkit-playsinline","");
+
+    v.preload="auto";
+    v.setAttribute("controlsList","nodownload noplaybackrate noremoteplayback");
+    v.setAttribute("disablePictureInPicture","");
+    v.setAttribute("disableRemotePlayback","");
+
+    if(el.poster) v.poster = el.poster;
+    v.src = el.src;
+
+    return v;
+  }
+
+  function setPriority(node, priority){
+    if(node && node.tagName==="IMG"){
+      try{ node.fetchPriority = priority; }catch(e){}
+    }
+  }
+
+  function ensureNode(el){
+    const k = keyOf(el);
+    if(nodeCache.has(k)) return nodeCache.get(k);
+
+    const node = (el.type==="video") ? makeVideo(el) : makeImg(el.src);
+    nodeCache.set(k, node);
+    return node;
+  }
+
+  function ensureReady(el){
+    const k = keyOf(el);
+    if(readyCache.has(k)) return readyCache.get(k);
+
+    const p = new Promise((resolve)=>{
+      if (el.type === "img") {
+        const img = ensureNode(el);
+        const done = () => resolve(true);
+
+        if (img.complete) { done(); return; }
+        img.onload = done;
+        img.onerror = done;
+      } else {
+        const v = ensureNode(el);
+        if (el.poster) ensureReady({ type: "img", src: el.poster });
+
+        const done = () => resolve();
+        if (v.readyState >= 1) { resolve(); return; }
+        v.onloadedmetadata = done;
+        v.onerror = done;
+      }
+    });
+
+    readyCache.set(k, p);
+    return p;
+  }
+
+  async function startVideoWithSoundOrTap(v){
+    setUnmute(false);
+
+    v.muted = false;
+    v.volume = 1;
+    try{
+      await v.play();
+      setUnmute(false);
+      return;
+    }catch(e){}
+
+    v.muted = true;
+    v.volume = 0;
+    try{ await v.play(); }catch(e){}
+    setUnmute(true);
+
+    const unlock = async ()=>{
+      try{
+        v.muted = false;
+        v.volume = 1;
+        await v.play();
+        setUnmute(false);
+      }catch(e){
+        setUnmute(true);
+      }
+    };
+
+    unmuteEl.onclick = (e)=>{ e.preventDefault(); unlock(); };
+    gallery.addEventListener("pointerdown", unlock, {once:true, passive:true, capture:true});
+    gallery.addEventListener("touchstart", unlock, {once:true, passive:true, capture:true});
+    window.addEventListener("keydown", unlock, {once:true, capture:true});
+  }
+
+  function mountNode(el){
+    clearCenterKeepUI();
+    setLoading(true);
+    setUnmute(false);
+
+    if(currentVideo){
+      try{ currentVideo.pause(); }catch(e){}
+      currentVideo = null;
+    }
+
+    const node = ensureNode(el);
+    center.insertBefore(node, center.querySelector(".rg-nav"));
+
+    if(el.type==="img"){
+      setLoading(false);
+      return;
+    }
+
+    const v = node;
+    currentVideo = v;
+
+    const hide = ()=>setLoading(false);
+    v.addEventListener("playing", hide, {once:true});
+    v.addEventListener("loadeddata", hide, {once:true});
+    v.addEventListener("error", hide, {once:true});
+
+    startVideoWithSoundOrTap(v);
+  }
+
+  function preloadAround(i){
+    const n=elements.length;
+    const prev=(i-1+n)%n;
+    const next=(i+1+n)%n;
+
+    const curNode = ensureNode(elements[i]);
+    setPriority(curNode, "high");
+    setPriority(ensureNode(elements[prev]), "low");
+    setPriority(ensureNode(elements[next]), "low");
+
+    ensureReady(elements[i]);
+    ensureReady(elements[prev]);
+    ensureReady(elements[next]);
+
+    ric(()=>{
+      ensureReady(elements[(prev-1+n)%n]);
+      ensureReady(elements[(next+1+n)%n]);
+    });
+  }
+
+  async function show(i){
+    const t=++token;
+    const n=elements.length;
+
+    if(i<0)i=n-1;
+    if(i>=n)i=0;
+    index=i;
+
+    setLoading(true);
+    preloadAround(i);
+
+    await ensureReady(elements[i]);
+    if(t!==token) return;
+
+    mountNode(elements[i]);
+  }
+
+  prevBtn.onclick=()=>show(index-1);
+  nextBtn.onclick=()=>show(index+1);
+
+  let startX=0;
+  gallery.addEventListener("touchstart",e=>{startX=e.touches[0].clientX},{passive:true});
+  gallery.addEventListener("touchend",e=>{
+    const d=e.changedTouches[0].clientX-startX;
+    if(Math.abs(d)>40){ d<0?show(index+1):show(index-1); }
+  },{passive:true});
+
+  document.addEventListener("visibilitychange", ()=>{
+    if(document.hidden && currentVideo) currentVideo.pause();
+    else if(!document.hidden && currentVideo){
+      currentVideo.play().catch(()=>{});
+    }
+  });
+
+  preloadAround(0);
+  show(0);
+})();
+</script>
