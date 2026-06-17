@@ -145,7 +145,7 @@
     img.className = "rg-main";
     img.decoding = "async";
     img.loading = "eager";
-    img.crossOrigin = "anonymous";
+    // ✅ Убран crossOrigin, чтобы не блокировался гитхаб
     img.src = src;
     return img;
   }
