@@ -1,0 +1,381 @@
+<div id="rg-gallery">
+  <div id="rg-stage">
+    <div id="rg-center">
+      <span class="rg-loading" aria-hidden="true">loading...</span>
+
+      <button class="rg-tap" type="button" aria-label="Tap to screen">
+        tap for sound
+      </button>
+
+      <button class="rg-pause" type="button" aria-label="Pause/Play" tabindex="-1"></button>
+
+      <div class="rg-nav">
+        <button class="rg-btn rg-prev" type="button">⟨</button>
+        <button class="rg-btn rg-next" type="button">⟩</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<link rel="dns-prefetch" href="//cdn.jsdelivr.net">
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+<link rel="dns-prefetch" href="//c.s-microsoft.com">
+<link rel="preconnect" href="https://c.s-microsoft.com" crossorigin>
+
+<style>
+@font-face{
+  font-family:"SegoeUI";
+  src:
+    local("Segoe UI Light"),
+    url("https://c.s-microsoft.com/static/fonts/segoe-ui/west-european/light/latest.woff2") format("woff2"),
+    url("https://c.s-microsoft.com/static/fonts/segoe-ui/west-european/light/latest.woff") format("woff"),
+    url("https://c.s-microsoft.com/static/fonts/segoe-ui/west-european/light/latest.ttf") format("truetype");
+  font-weight:300;
+  font-style:normal;
+  font-display:swap;
+}
+
+#rg-gallery{position:fixed;inset:0;background:#fcfcfc;z-index:9999;overflow:hidden}
+#rg-stage{position:absolute;inset:0;top:-60px;display:flex;align-items:center;justify-content:center;pointer-events:none}
+
+#rg-center{
+  width:92vw;max-width:560px;
+  height:64vh;max-height:640px;
+  display:flex;align-items:center;justify-content:center;
+  position:relative;pointer-events:none
+}
+
+.rg-main{max-width:100%;max-height:100%;object-fit:contain;display:block;pointer-events:auto}
+
+.rg-nav{position:absolute;left:50%;bottom:-65px;transform:translateX(-50%);display:flex;gap:25px;pointer-events:auto}
+.rg-btn{font-size:1.6rem;background:none;border:none;color:#666;cursor:pointer;padding:4px 8px;-webkit-tap-highlight-color:transparent}
+
+.rg-loading{
+  position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
+  font-family:"SegoeUI","Segoe UI",-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif;
+  font-weight:300;font-size:10px;letter-spacing:.01em;line-height:16px;
+  color:#fff;mix-blend-mode:difference;opacity:.9;
+  pointer-events:none;user-select:none;display:none;
+}
+#rg-center.is-loading .rg-loading{display:block}
+
+.rg-tap{
+  position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
+  z-index:6;display:none;pointer-events:auto;cursor:pointer;
+  font-family:"SegoeUI","Segoe UI",-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif;
+  font-weight:300;font-size:8px;line-height:16px;letter-spacing:0.01em;
+  padding:6px 10px;background:rgba(255,255,255,.95);
+  border:1px solid rgba(0,0,0,.14);border-radius:999px;
+  -webkit-tap-highlight-color:transparent;
+  color:#000;
+}
+#rg-center.needs-tap .rg-tap{display:block}
+
+.rg-pause{
+  position:absolute;inset:0;
+  border:0;padding:0;margin:0;background:transparent;
+  display:none;z-index:5;pointer-events:auto;
+  cursor:pointer;
+  -webkit-tap-highlight-color:transparent;
+}
+#rg-center.has-video .rg-pause{display:block}
+</style>
+
+<script>
+(function(){
+  const gallery=document.getElementById("rg-gallery");
+  if(!gallery || gallery.dataset.rgInit==="1") return;
+  gallery.dataset.rgInit="1";
+
+  const center=document.getElementById("rg-center");
+  const prevBtn=gallery.querySelector(".rg-prev");
+  const nextBtn=gallery.querySelector(".rg-next");
+  const loadingEl=center.querySelector(".rg-loading");
+  const tapBtn=center.querySelector(".rg-tap");
+  const pauseBtn=center.querySelector(".rg-pause");
+  const navEl=center.querySelector(".rg-nav");
+
+  // ✅ Твоя новая прямая MP4 ссылка установлена сюда:
+  const fastElements=[
+    {
+      type:'video',
+      src:"https://video.gumlet.io/6a320ee529923fe6a20306e8/6a3261f3b02ffb1d838df3c4/main.mp4",
+      poster:"https://cdn.jsdelivr.net/gh/tsyomiki-collab/in-my-room-2@main/1.jpg"
+    },
+    {type:'img', src:"https://cdn.jsdelivr.net/gh/tsyomiki-collab/in-my-room-2@main/1.jpg"},
+    {type:'img', src:"https://cdn.jsdelivr.net/gh/tsyomiki-collab/in-my-room-2@main/2.jpg"},
+    {type:'img', src:"https://cdn.jsdelivr.net/gh/tsyomiki-collab/in-my-room-2@main/3.jpg"},
+    {type:'img', src:"https://cdn.jsdelivr.net/gh/tsyomiki-collab/in-my-room-2@main/4.jpg"}
+  ];
+
+  let index=0, token=0, currentVideo=null;
+  let soundUnlocked=false;
+
+  const nodeCache=new Map();
+  const readyCache=new Map();
+
+  function keyOf(el){ return el.type==="video" ? ("v:"+el.src) : ("i:"+el.src); }
+  function setLoading(on){ center.classList.toggle("is-loading", !!on); }
+  function setNeedsTap(on){
+    center.classList.toggle("needs-tap", !!on);
+    pauseBtn.style.pointerEvents = on ? "none" : "auto";
+  }
+  function setHasVideo(on){ center.classList.toggle("has-video", !!on); }
+
+  function clearCenterKeepUI(){
+    center.innerHTML="";
+    center.appendChild(loadingEl);
+    center.appendChild(tapBtn);
+    center.appendChild(pauseBtn);
+    center.appendChild(navEl);
+  }
+
+  function ensureImg(src){
+    const k="i:"+src;
+    if(nodeCache.has(k)) return nodeCache.get(k);
+    const img=new Image();
+    img.className="rg-main";
+    img.decoding="async";
+    img.loading="eager";
+    img.src=src;
+    nodeCache.set(k,img);
+    return img;
+  }
+
+  function ensureVideo(el){
+    const k="v:"+el.src;
+    if(nodeCache.has(k)) return nodeCache.get(k);
+
+    const v=document.createElement("video");
+    v.className="rg-main";
+    v.autoplay=true;
+    v.loop=true;
+    v.controls=false;
+
+    v.playsInline=true;
+    v.setAttribute("playsinline","");
+    v.setAttribute("webkit-playsinline","");
+
+    v.preload="auto";
+    v.setAttribute("controlsList","nodownload noplaybackrate noremoteplayback");
+    v.setAttribute("disablePictureInPicture","");
+    v.setAttribute("disableRemotePlayback","");
+
+    if(el.poster) v.poster=el.poster;
+
+    v.muted=true;
+    v.volume=0;
+    v.setAttribute("muted","");
+
+    v.src = el.src;
+
+    nodeCache.set(k,v);
+    return v;
+  }
+
+  function ensureReady(el){
+    const k=keyOf(el);
+    if(readyCache.has(k)) return readyCache.get(k);
+
+    const p = new Promise((resolve)=>{
+      if(el.type==="img"){
+        const img=ensureImg(el.src);
+        const done = async ()=>{
+          if(img.decode){
+            try{ await img.decode(); }catch(e){}
+          }
+          resolve(true);
+        };
+        if(img.complete){ done(); return; }
+        img.onload=done; img.onerror=done;
+      }else{
+        if(el.poster) ensureReady({type:"img", src: el.poster});
+        resolve(true);
+      }
+    });
+
+    readyCache.set(k,p);
+    return p;
+  }
+
+  function hardMuteAndStop(v){
+    if(!v) return;
+    try{ v.muted=true; v.volume=0; v.setAttribute("muted",""); }catch(e){}
+    try{ v.pause(); }catch(e){}
+  }
+
+  function stopAllVideosNow(){
+    if(currentVideo) hardMuteAndStop(currentVideo);
+    for(const node of nodeCache.values()){
+      if(node && node.tagName==="VIDEO") hardMuteAndStop(node);
+    }
+  }
+
+  async function tryPlayWithSound(v){
+    try{
+      v.muted=false;
+      v.removeAttribute("muted");
+      v.volume=1;
+      await v.play();
+      return true;
+    }catch(e){}
+    return false;
+  }
+
+  async function startVideoSmart(v){
+    if(soundUnlocked){
+      if(await tryPlayWithSound(v)){
+        setNeedsTap(false);
+        return true;
+      }
+    }else{
+      if(await tryPlayWithSound(v)){
+        soundUnlocked=true;
+        setNeedsTap(false);
+        return true;
+      }
+    }
+
+    try{
+      v.muted=true;
+      v.volume=0;
+      v.setAttribute("muted","");
+      await v.play();
+    }catch(_){}
+    setNeedsTap(true);
+    return false;
+  }
+
+  async function unlockSoundFromGesture(){
+    if(!currentVideo) return;
+    soundUnlocked = true;
+
+    if(await tryPlayWithSound(currentVideo)){ setNeedsTap(false); return; }
+    await new Promise(r=>requestAnimationFrame(r));
+    if(await tryPlayWithSound(currentVideo)){ setNeedsTap(false); return; }
+    setTimeout(async ()=>{
+      if(currentVideo && (await tryPlayWithSound(currentVideo))) setNeedsTap(false);
+      else setNeedsTap(true);
+    }, 80);
+  }
+
+  function stopEvent(e){
+    e.stopPropagation();
+    if(e.stopImmediatePropagation) e.stopImmediatePropagation();
+  }
+
+  tapBtn.addEventListener("pointerdown", (e)=>{
+    if(!center.classList.contains("needs-tap")) return;
+    stopEvent(e);
+  }, true);
+
+  tapBtn.addEventListener("touchstart", (e)=>{
+    if(!center.classList.contains("needs-tap")) return;
+    stopEvent(e);
+  }, {passive:true, capture:true});
+
+  tapBtn.addEventListener("click", async (e)=>{
+    if(!center.classList.contains("needs-tap")) return;
+    e.preventDefault();
+    stopEvent(e);
+    await unlockSoundFromGesture();
+  }, true);
+
+  pauseBtn.addEventListener("click", async (e)=>{
+    e.preventDefault();
+    const v=currentVideo;
+    if(!v) return;
+    if(center.classList.contains("needs-tap")) return;
+
+    if(v.paused){
+      await startVideoSmart(v);
+    }else{
+      try{ v.pause(); }catch(err){}
+      try{ v.muted=true; v.volume=0; v.setAttribute("muted",""); }catch(e2){}
+    }
+  });
+
+  function showCenter(el){
+    clearCenterKeepUI();
+    setNeedsTap(false);
+    setHasVideo(false);
+
+    if(currentVideo){
+      hardMuteAndStop(currentVideo);
+      currentVideo=null;
+    }
+
+    if(el.type==="img"){
+      center.insertBefore(ensureImg(el.src), navEl);
+      return;
+    }
+
+    const v=ensureVideo(el);
+    center.insertBefore(v, navEl);
+    currentVideo=v;
+
+    setHasVideo(true);
+
+    try{ v.play(); }catch(_){}
+    setTimeout(()=>{ if(currentVideo===v) startVideoSmart(v); }, 60);
+  }
+
+  async function show(i){
+    const t=++token;
+    const n=fastElements.length;
+
+    if(i<0)i=n-1;
+    if(i>=n)i=0;
+    index=i;
+
+    setLoading(true);
+    setNeedsTap(false);
+
+    const prev=(i-1+n)%n, next=(i+1)%n;
+    ensureReady(fastElements[i]);
+    ensureReady(fastElements[prev]);
+    ensureReady(fastElements[next]);
+    setTimeout(()=>ensureReady(fastElements[(next+1)%n]), 120);
+
+    await ensureReady(fastElements[i]);
+    if(t!==token) return;
+
+    showCenter(fastElements[i]);
+    setLoading(false);
+  }
+
+  prevBtn.onclick=()=>show(index-1);
+  nextBtn.onclick=()=>show(index+1);
+
+  let sx=0, sy=0, dx=0, dy=0, moved=false;
+  gallery.addEventListener("touchstart",(e)=>{
+    const t=e.touches[0];
+    sx=t.clientX; sy=t.clientY; dx=0; dy=0; moved=false;
+  },{passive:true});
+  gallery.addEventListener("touchmove",(e)=>{
+    const t=e.touches[0];
+    dx=t.clientX-sx; dy=t.clientY-sy;
+    if(Math.abs(dx)>10 || Math.abs(dy)>10) moved=true;
+  },{passive:true});
+  gallery.addEventListener("touchend",()=>{
+    if(!moved) return;
+    if(Math.abs(dx)<=Math.abs(dy)) return;
+    if(Math.abs(dx)<70) return;
+    dx<0 ? show(index+1) : show(index-1);
+  },{passive:true});
+
+  document.addEventListener("visibilitychange", ()=>{
+    if(document.hidden) stopAllVideosNow();
+    else if(!document.hidden && currentVideo){
+      try{ currentVideo.muted=true; currentVideo.volume=0; currentVideo.setAttribute("muted",""); }catch(e){}
+      try{ currentVideo.play(); }catch(e){}
+      if(!soundUnlocked) setNeedsTap(true);
+    }
+  });
+  window.addEventListener("pagehide", stopAllVideosNow, {capture:true});
+  window.addEventListener("beforeunload", stopAllVideosNow, {capture:true});
+  window.addEventListener("blur", ()=>{ if(document.hidden) return; stopAllVideosNow(); }, {capture:true});
+
+  show(0);
+})();
+</script>
