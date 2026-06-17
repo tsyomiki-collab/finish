@@ -127,9 +127,13 @@
     return `https://res.cloudinary.com/${CLOUD}/image/fetch/f_auto,q_auto:eco,fl_progressive,w_${TARGET_W}/${encodeURIComponent(url)}`;
   }
 
-  const elements = elementsRaw.map(el=>{
-    if(el.type==="img") return {...el, src: cldFetch(el.src)};
-    if(el.type==="video" && el.poster) return {...el, poster: cldFetch(el.poster)};
+const fast = elements.map(el=>{
+    if(el.type === "img") return el;
+    if(el.type === "video") return {
+      ...el,
+      src: cldFastVideo(el.src),
+      poster: el.poster ? el.poster : ""
+    };
     return el;
   });
 
