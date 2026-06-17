@@ -164,14 +164,15 @@ const fast = elements.map(el=>{
   }
 
   function makeImg(src){
-    const img = new Image();
-    img.className = "rg-main";
-    img.decoding = "async";
-    img.loading = "eager";
-    img.src = src;
-    return img;
-  }
-
+  const img = new Image();
+  img.className = "rg-main";
+  img.decoding = "async";
+  img.loading = "eager";
+  img.crossOrigin = "anonymous"; // <- ДОБАВИТЬ ЭТУ СТРОКУ
+  img.src = src;
+  return img;
+}
+  
   function makeVideo(el){
     const v = document.createElement("video");
     v.className="rg-main";
@@ -216,29 +217,24 @@ const fast = elements.map(el=>{
     if(readyCache.has(k)) return readyCache.get(k);
 
     const p = new Promise((resolve)=>{
-      if(el.type==="img"){
-        const img = ensureNode(el);
+  if (el.type === "img") {
+      const img = ensureNode(el);
+      const done = () => resolve(true);
 
-        const done = async ()=>{
-          if(img.decode){
-            try{ await img.decode(); }catch(e){}
-          }
-          resolve();
-        };
+      if (img.complete) { done(); return; }
+      img.onload = done;
+      img.onerror = done;
+    } else {
+      // видео: достаточно метаданных + прогреть постер
+      const v = ensureNode(el);
+      if (el.poster) ensureReady({ type: "img", src: el.poster });
 
-        if(img.complete){ done(); return; }
-        img.onload = done;
-        img.onerror = done;
-      } else {
-        // видео: достаточно метаданных + прогреть постер
-        const v = ensureNode(el);
-        if(el.poster) ensureReady({type:"img", src: el.poster});
-
-        const done = ()=>resolve();
-        if(v.readyState >= 1){ resolve(); return; }
-        v.onloadedmetadata = done;
-        v.onerror = done;
-      }
+      const done = () => resolve();
+      if (v.readyState >= 1) { resolve(); return; }
+      v.onloadedmetadata = done;
+      v.onerror = done;
+    }
+      
     });
 
     readyCache.set(k, p);
